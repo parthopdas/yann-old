@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>netcoreapp3.1</TargetFramework>
@@ -6,9 +6,11 @@
 
   <ItemGroup>
     <Compile Include="PerfTests.fs" />
+    <Compile Include="CoreTests.fs" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="FluentAssertions" Version="5.10.3" />
     <PackageReference Include="FsCheck.Xunit" Version="2.14.2" />
     <PackageReference Include="FsUnit.xUnit" Version="3.8.1" />
     <PackageReference Include="MathNet.Numerics.FSharp" Version="4.11.0" />
