@@ -20,4 +20,4 @@ let ``Check MLK install``() =
     sw.Stop()
     totalMS <- totalMS + sw.ElapsedMilliseconds
 
-  totalMS |> should be (lessThan 100000L)
+  totalMS |> should be (lessThan 110000L)

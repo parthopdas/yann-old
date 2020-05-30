@@ -1,8 +1,11 @@
-﻿// Learn more about F# at http://fsharp.org
+// Learn more about F# at http://fsharp.org
 
 open System
 
 [<EntryPoint>]
 let main argv =
+    MathNet.Numerics.Control.UseNativeMKL();
+    // TODO: Set random number generator seed
+
     printfn "Hello World from F#!"
     0 // return an integer exit code

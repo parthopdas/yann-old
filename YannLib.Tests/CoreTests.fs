@@ -6,7 +6,6 @@ open FluentAssertions
 open FsUnit.Xunit
 open MathNet.Numerics.LinearAlgebra
 open System
-open System.Collections.Generic
 
 let private matrixShape (m: Matrix<double>) =
   m.RowCount, m.ColumnCount
@@ -28,14 +27,19 @@ let ``Check network initialization``() =
     |]
   }
 
-  let nn = arch |> initializeNetwork 1
+  let nn = arch |> _initializeNetwork 1
 
+  nn.Architecture |> should equal arch
   nn.Parameters.Keys.Should().Equal(1, 2) |> ignore
-  nn.Parameters.[1].W |> matrixShape |> should equal (3, 2)
-  compareArrays (nn.Parameters.[1].W.ToRowMajorArray()) [|-0.002993466474; 0.01541654033; -0.00463620853; 0.01904072042; -0.001872509079; -0.0081251694|]
-  nn.Parameters.[1].b |> matrixShape |> should equal (3, 1)
-  compareArrays (nn.Parameters.[1].b.ToRowMajorArray()) [|-0.002993466474; -0.00463620853; -0.001872509079|]
-  nn.Parameters.[2].W |> matrixShape |> should equal (1, 3)
-  compareArrays (nn.Parameters.[2].W.ToRowMajorArray()) [|-0.002993466474; -0.00463620853; -0.001872509079|]
-  nn.Parameters.[2].b |> matrixShape |> should equal (1, 1)
-  compareArrays (nn.Parameters.[2].b.ToRowMajorArray()) [|-0.002993466474|]
+
+  let W1 = array2D [[-0.002993466474; 0.01541654033]; [-0.00463620853; 0.01904072042]; [-0.001872509079; -0.0081251694]]
+  nn.Parameters.[1].W.ToArray().Should().BeEquivalentTo(W1, TestHelpers.doubleComparisonOptions, String.Empty, Array.empty) |> ignore
+
+  let b1 = array2D [[-0.002993466474]; [-0.00463620853]; [-0.001872509079]]
+  nn.Parameters.[1].b.ToArray().Should().BeEquivalentTo(b1, TestHelpers.doubleComparisonOptions, String.Empty, Array.empty) |> ignore
+
+  let W2 = array2D [[-0.002993466474; -0.00463620853; -0.001872509079]]
+  nn.Parameters.[2].W.ToArray().Should().BeEquivalentTo(W2, TestHelpers.doubleComparisonOptions, String.Empty, Array.empty) |> ignore
+
+  let b2 = array2D [[-0.002993466474]]
+  nn.Parameters.[2].b.ToArray().Should().BeEquivalentTo(b2, TestHelpers.doubleComparisonOptions, String.Empty, Array.empty) |> ignore
