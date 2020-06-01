@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <Compile Include="YaFunTK.fs" />
+    <Compile Include="Extensions.fs" />
     <Compile Include="Core.fs" />
   </ItemGroup>
 

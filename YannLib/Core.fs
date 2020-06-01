@@ -8,31 +8,31 @@ type Activation =
   | Sigmoid
 
 type Layer =
-  | FullyConnected of {| n: int; Activation: Activation |}
+  { n: int
+    Activation: Activation }
 
 type Architecture =
-  { n_x: int
-    Layers: Layer array }
+  { nₓ: int
+    Layers: Layer list }
 
-type Gradients = IReadOnlyDictionary<int, {| dW: Matrix<double>; db: Matrix<double> |}>
+type Gradients = IReadOnlyDictionary<int, {| dW: Matrix<double>; db: Vector<double> |}>
+
+type Cache = { A: Matrix<double>; Z: Matrix<double> }
+type Caches = Map<int, Cache>
 
 type Network =
   { Architecture: Architecture
-    Parameters: IDictionary<int, {| W: Matrix<double>; b: Matrix<double> |}> }
+    Parameters: IDictionary<int, {| W: Matrix<double>; b: Vector<double> |}> }
 
 let _initializeNetwork (seed: int) (arch: Architecture): Network =
   let ws =
-    seq {
-      yield arch.n_x
-      yield! arch.Layers |> Seq.map (function | FullyConnected fc -> fc.n)
-    }
+    seq { yield arch.nₓ; yield! arch.Layers |> Seq.map (fun l -> l.n) }
     |> Seq.pairwise
-    |> Seq.map (fun (nprev, ncurr) -> Matrix<double>.Build.Random(ncurr, nprev, seed) * 0.01)
+    |> Seq.map (fun (nPrev, n) -> Matrix<double>.Build.Random(n, nPrev, seed) * 0.01)
 
   let bs =
     arch.Layers
-    |> Seq.map (function | FullyConnected fc -> fc.n)
-    |> Seq.map (fun n -> Matrix<double>.Build.Random(n, 1, seed) * 0.01)
+    |> Seq.map (fun l -> Vector<double>.Build.Random(l.n, seed) * 0.01)
 
   let ps =
     Seq.zip ws bs
@@ -40,6 +40,41 @@ let _initializeNetwork (seed: int) (arch: Architecture): Network =
     |> dict
 
   { Architecture = arch; Parameters = ps }
+
+let _linearForward (A: Matrix<double>) (W: Matrix<double>) (b: Vector<double>) =
+  let Z = W.Multiply(A) + b.BroadcastC(A.ColumnCount)
+  
+  assert (Z.Shape() = [|W.Shape().[0]; A.Shape().[1]|])
+  let cache = A, W, b
+
+  Z, cache
+
+let _linearActivationForward (Aprev: Matrix<double>) (W: Matrix<double>) (b: Vector<double>) activation =
+  let Z, _ = _linearForward Aprev W b
+
+  let A =
+    match activation with
+    | ReLU -> Z.PointwiseMaximum(0.0)
+    | Sigmoid -> Z.Negate().PointwiseExp().Add(1.0).PointwisePower(-1.0)
+
+  A, Z
+
+let _forwardPropagate network (X: Matrix<double>): (Matrix<double> * Caches) =
+  let _folder =
+    fun (acc: Map<int, Cache>) (l, layer: Layer) ->
+      let APrev = acc |> Map.find (l - 1) |> fun { A = A } -> A
+      let (A, Z) = _linearActivationForward APrev network.Parameters.[l].W network.Parameters.[l].b layer.Activation
+      acc |> Map.add l { A = A; Z = Z }
+
+  let c0 = [(0, { Z = null; A = X })] |> Map.ofList
+  let caches =
+    network.Architecture.Layers
+    |> List.mapi (fun i l -> (i + 1), l)
+    |> List.fold _folder c0
+    |> Map.remove 0
+
+  let AL = caches |> Map.find network.Architecture.Layers.Length |> fun x -> x.A
+  AL, caches
 
 let _computeCost (Y: Matrix<double>) (Ŷ: Matrix<double>): double =
   let m = double Y.ColumnCount
@@ -52,33 +87,30 @@ let _computeCost (Y: Matrix<double>) (Ŷ: Matrix<double>): double =
 let _computeAccuracy (Y: Matrix<double>) (Ŷ: Matrix<double>) =
   Prelude.undefined
 
-let _forwardPropagate network X =
-  Prelude.undefined
-
 let _backwardPropagate (network: Network) (Y: Matrix<double>) (Ŷ: Matrix<double>): Gradients =
   Prelude.undefined
 
 let _updateParameters (network: Network) (lr: double) (gradients: Gradients) =
-  let updateLayerParameters i _ =
-    let l = i + 1
+  let updateLayerParameters l =
     let W = network.Parameters.[l].W - lr * gradients.[l].dW
     let b = network.Parameters.[l].b - lr * gradients.[l].db
     network.Parameters.[l] <- {| W = W; b = b |}
-  network.Architecture.Layers |> Seq.iteri updateLayerParameters
+  for i = 1 to network.Architecture.Layers.Length do
+    updateLayerParameters i
 
 let trainNetwork (seed: int) (callback: double -> double -> unit) (arch: Architecture) (X: Matrix<double>) (Y: Matrix<double>) (lr: double) (epochs: int): Network =
   let network = arch |> _initializeNetwork seed
 
-  for _ = 0 to (epochs - 1) do
-    let Ŷ = _forwardPropagate network X
+  //for _ = 0 to (epochs - 1) do
+  //  let Ŷ = _forwardPropagate network X
 
-    let J = _computeCost Y Ŷ
-    let accuracy = _computeAccuracy Y Ŷ
+  //  let J = _computeCost Y Ŷ
+  //  let accuracy = _computeAccuracy Y Ŷ
 
-    let gradients = _backwardPropagate network Y Ŷ
+  //  let gradients = _backwardPropagate network Y Ŷ
 
-    _updateParameters network lr gradients
+  //  _updateParameters network lr gradients
 
-    callback J accuracy
+  //  callback J accuracy
 
   network
