@@ -141,7 +141,7 @@ let ``Check linear part of a layer's backward propagation``() =
   let b =
     [|2.10025514; 0.12015895; 0.61720311|] |> toV
 
-  let (dAprev, dW, db) = _linearBackward dZ Aprev W b
+  let (dAprev, dW, db) = _linearBackward dZ { _invalidCache with A = Aprev; W = W; b = b }
 
   let dAprevExpected =
     [[-1.15171336;  0.06718465; -0.3204696;   2.09812712]
@@ -175,7 +175,7 @@ let ``Check linear and activation part of a layer's backward propagation``() =
   let Z =
     [[ 0.04153939; -1.11792545]] |> toM
 
-  let dAprev, dW, db = _linearActivationBackward dA Aprev W b Z ReLU
+  let dAprev, dW, db = _linearActivationBackward dA { A = Aprev; W = W; b = b; Z = Z } ReLU
 
   let dAprevExpected =
     [[ 0.44090989; -0.0 ]
@@ -190,7 +190,7 @@ let ``Check linear and activation part of a layer's backward propagation``() =
   dW |> shouldBeEquivalentM dWExpected
   db |> shouldBeEquivalentV dbExpected
 
-  let dAprev, dW, db = _linearActivationBackward dA Aprev W b Z Sigmoid
+  let dAprev, dW, db = _linearActivationBackward dA { A = Aprev; W = W; b = b; Z = Z } Sigmoid
 
   let dAprevExpected =
     [[ 0.11017994;  0.01105339]

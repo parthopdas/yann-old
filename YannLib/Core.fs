@@ -3,6 +3,9 @@ module YannLib.Core
 open MathNet.Numerics.LinearAlgebra
 open System.Collections.Generic
 
+let _invalidMatrix = Matrix<double>.Build.Sparse(1, 1, 0.0)
+let _invalidVector = Vector<double>.Build.Sparse(1, 0.0)
+
 type Activation =
   | ReLU
   | Sigmoid
@@ -16,10 +19,11 @@ type Architecture =
     Layers: Layer list }
 
 type Gradient = { dA: Matrix<double>; dW: Matrix<double>; db: Vector<double> }
-type Gradients = IReadOnlyDictionary<int, Gradient>
+type Gradients = Map<int, Gradient>
 
-type Cache = { A: Matrix<double>; Z: Matrix<double> }
+type Cache = { A: Matrix<double>; Z: Matrix<double>; W: Matrix<double>; b: Vector<double> }
 type Caches = Map<int, Cache>
+let _invalidCache = { Z = _invalidMatrix; A = _invalidMatrix; W = _invalidMatrix; b = _invalidVector }
 
 type Network =
   { Architecture: Architecture
@@ -44,36 +48,33 @@ let _initializeNetwork (seed: int) (arch: Architecture): Network =
 
 let _linearForward (A: Matrix<double>) (W: Matrix<double>) (b: Vector<double>) =
   let Z = W.Multiply(A) + b.BroadcastC(A.ColumnCount)
-  
-  let cache = A, W, b
-
-  Z, cache
+  Z, (W, b)
 
 let _linearActivationForward (Aprev: Matrix<double>) (W: Matrix<double>) (b: Vector<double>) activation =
-  let Z, _ = _linearForward Aprev W b
+  let Z, linearCache = _linearForward Aprev W b
 
-  let A =
+  let A, activationCache =
     match activation with
-    | ReLU -> Z.PointwiseMaximum(0.0)
-    | Sigmoid -> Z.Negate().PointwiseExp().Add(1.0).PointwisePower(-1.0)
+    | ReLU -> Z.PointwiseMaximum(0.0), Z
+    | Sigmoid -> Z.Negate().PointwiseExp().Add(1.0).PointwisePower(-1.0), Z
 
-  A, Z
+  A, (linearCache, activationCache)
 
 let _forwardPropagate network (X: Matrix<double>): (Matrix<double> * Caches) =
   let _folder =
     fun (acc: Map<int, Cache>) (l, layer: Layer) ->
-      let APrev = acc |> Map.find (l - 1) |> fun { A = A } -> A
-      let (A, Z) = _linearActivationForward APrev network.Parameters.[l].W network.Parameters.[l].b layer.Activation
-      acc |> Map.add l { A = A; Z = Z }
+      let APrev = acc.[l - 1].A
+      let (A, ((W, b), Z)) = _linearActivationForward APrev network.Parameters.[l].W network.Parameters.[l].b layer.Activation
+      acc |> Map.add l { A = A; Z = Z; W = W; b = b }
 
-  let c0 = [(0, { Z = null; A = X })] |> Map.ofList
+  let c0 = [(0, { _invalidCache with A = X })] |> Map.ofList
   let caches =
     network.Architecture.Layers
     |> List.mapi (fun i l -> (i + 1), l)
     |> List.fold _folder c0
     |> Map.remove 0
 
-  let AL = caches |> Map.find network.Architecture.Layers.Length |> fun x -> x.A
+  let AL = caches.[network.Architecture.Layers.Length].A
   AL, caches
 
 let _computeCost (Y: Matrix<double>) (Ŷ: Matrix<double>): double =
@@ -87,7 +88,7 @@ let _computeCost (Y: Matrix<double>) (Ŷ: Matrix<double>): double =
 let _computeAccuracy (Y: Matrix<double>) (Ŷ: Matrix<double>) =
   Prelude.undefined
 
-let _linearBackward (dZ: Matrix<double>) (Aprev: Matrix<double>) (W: Matrix<double>) (b: Vector<double>) =
+let _linearBackward (dZ: Matrix<double>) { A = Aprev; W = W } =
   let m = Aprev.Shape().[1] |> double
 
   let dW = (1.0 / m) * dZ.Multiply(Aprev.Transpose())
@@ -96,20 +97,20 @@ let _linearBackward (dZ: Matrix<double>) (Aprev: Matrix<double>) (W: Matrix<doub
   
   dAprev, dW, db
 
-let _linearActivationBackward (dA: Matrix<double>) (Aprev: Matrix<double>) (W: Matrix<double>) (b: Vector<double>) (Z: Matrix<double>) activation =
+let _linearActivationBackward (dA: Matrix<double>) cache activation =
   let dZ =
     match activation with
     | ReLU ->
       let dZ = dA.Clone()
-      dZ.MapIndexedInplace(fun r c v -> if Z.Item(r, c) <= 0.0 then 0.0 else v)
+      dZ.MapIndexedInplace(fun r c v -> if cache.Z.Item(r, c) <= 0.0 then 0.0 else v)
       dZ
     | Sigmoid ->
-      let s = Z.Negate().PointwiseExp().Add(1.0).PointwisePower(-1.0)
+      let s = cache.Z.Negate().PointwiseExp().Add(1.0).PointwisePower(-1.0)
       dA.PointwiseMultiply(s).PointwiseMultiply(s.Negate().Add(1.0))
 
-  _linearBackward dZ Aprev W b
+  _linearBackward dZ cache
 
-let _backwardPropagate (network: Network) (Y: Matrix<double>) (Ŷ: Matrix<double>): Gradients =
+let _backwardPropagate (network: Network) (AL: Matrix<double>) (Y: Matrix<double>) (caches: Caches): Gradients =
   Prelude.undefined
 
 let _updateParameters (network: Network) (lr: double) (gradients: Gradients) =
@@ -146,6 +147,7 @@ TODO
 
 
 - compare perf with numpy
+- gradient checking
 
 *)
 
