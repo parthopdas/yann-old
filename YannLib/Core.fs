@@ -15,7 +15,8 @@ type Architecture =
   { nₓ: int
     Layers: Layer list }
 
-type Gradients = IReadOnlyDictionary<int, {| dW: Matrix<double>; db: Vector<double> |}>
+type Gradient = { dA: Matrix<double>; dW: Matrix<double>; db: Vector<double> }
+type Gradients = IReadOnlyDictionary<int, Gradient>
 
 type Cache = { A: Matrix<double>; Z: Matrix<double> }
 type Caches = Map<int, Cache>
@@ -44,7 +45,6 @@ let _initializeNetwork (seed: int) (arch: Architecture): Network =
 let _linearForward (A: Matrix<double>) (W: Matrix<double>) (b: Vector<double>) =
   let Z = W.Multiply(A) + b.BroadcastC(A.ColumnCount)
   
-  assert (Z.Shape() = [|W.Shape().[0]; A.Shape().[1]|])
   let cache = A, W, b
 
   Z, cache
@@ -87,6 +87,28 @@ let _computeCost (Y: Matrix<double>) (Ŷ: Matrix<double>): double =
 let _computeAccuracy (Y: Matrix<double>) (Ŷ: Matrix<double>) =
   Prelude.undefined
 
+let _linearBackward (dZ: Matrix<double>) (Aprev: Matrix<double>) (W: Matrix<double>) (b: Vector<double>) =
+  let m = Aprev.Shape().[1] |> double
+
+  let dW = (1.0 / m) * dZ.Multiply(Aprev.Transpose())
+  let db = (1.0 / m) * (dZ.EnumerateColumns() |> Seq.reduce (+))
+  let dAprev = W.Transpose().Multiply(dZ)
+  
+  dAprev, dW, db
+
+let _linearActivationBackward (dA: Matrix<double>) (Aprev: Matrix<double>) (W: Matrix<double>) (b: Vector<double>) (Z: Matrix<double>) activation =
+  let dZ =
+    match activation with
+    | ReLU ->
+      let dZ = dA.Clone()
+      dZ.MapIndexedInplace(fun r c v -> if Z.Item(r, c) <= 0.0 then 0.0 else v)
+      dZ
+    | Sigmoid ->
+      let s = Z.Negate().PointwiseExp().Add(1.0).PointwisePower(-1.0)
+      dA.PointwiseMultiply(s).PointwiseMultiply(s.Negate().Add(1.0))
+
+  _linearBackward dZ Aprev W b
+
 let _backwardPropagate (network: Network) (Y: Matrix<double>) (Ŷ: Matrix<double>): Gradients =
   Prelude.undefined
 
@@ -114,3 +136,16 @@ let trainNetwork (seed: int) (callback: double -> double -> unit) (arch: Archite
   //  callback J accuracy
 
   network
+
+(*
+TODO
+- Refactor out relu/sigmoid and their backwards
+- linear cache and actiavation cache seperation
+- consolidate caches
+- unit tests are independent of activation functions
+
+
+- compare perf with numpy
+
+*)
+

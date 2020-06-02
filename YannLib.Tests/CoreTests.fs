@@ -5,6 +5,7 @@ open YannLib.Core
 open FluentAssertions
 open FsUnit.Xunit
 open MathNet.Numerics.LinearAlgebra
+open TestHelpers
 
 [<Fact>]
 let ``Check network initialization``() =
@@ -23,50 +24,50 @@ let ``Check network initialization``() =
     [[-0.002993466474; 0.01541654033]
      [-0.00463620853; 0.01904072042]
      [-0.001872509079; -0.0081251694]]
-  nn.Parameters.[1].W |> TestHelpers.shouldBeEquivalentM W1
+  nn.Parameters.[1].W |> shouldBeEquivalentM W1
 
   let b1 =
     [|-0.002993466474; -0.00463620853; -0.001872509079|]
-  nn.Parameters.[1].b |> TestHelpers.shouldBeEquivalentV b1
+  nn.Parameters.[1].b |> shouldBeEquivalentV b1
 
   let W2 =
     [[-0.002993466474; -0.00463620853; -0.001872509079]]
-  nn.Parameters.[2].W |> TestHelpers.shouldBeEquivalentM W2
+  nn.Parameters.[2].W |> shouldBeEquivalentM W2
 
   let b2 =
     [|-0.002993466474|]
-  nn.Parameters.[2].b |> TestHelpers.shouldBeEquivalentV b2
+  nn.Parameters.[2].b |> shouldBeEquivalentV b2
 
 [<Fact>]
 let ``Check linear part of a layer's forward propagation``() =
   let A =
     [[ 1.62434536; -0.61175641]
      [-0.52817175; -1.07296862]
-     [ 0.86540763; -2.3015387 ]] |> array2D |> CreateMatrix.DenseOfArray
+     [ 0.86540763; -2.3015387 ]] |> toM
   let W =
-    [[ 1.74481176; -0.7612069; 0.3190391 ]] |> array2D |> CreateMatrix.DenseOfArray
+    [[ 1.74481176; -0.7612069; 0.3190391 ]] |> toM
   let b =
-    [|-0.24937038|] |> CreateVector.DenseOfArray
+    [|-0.24937038|] |> toV
 
   let (Z, _) = _linearForward A W b
-  Z |> TestHelpers.shouldBeEquivalentM [[ 3.26295337; -1.23429987]]
+  Z |> shouldBeEquivalentM [[ 3.26295337; -1.23429987]]
 
 [<Fact>]
 let ``Check linear and activation part of a layer's forward propagation``() =
   let Aprev =
     [[-0.41675785; -0.05626683]
      [-2.1361961;   1.64027081]
-     [-1.79343559; -0.84174737]] |> array2D |> CreateMatrix.DenseOfArray
+     [-1.79343559; -0.84174737]] |> toM
   let W =
-    [[0.50288142; -1.24528809; -1.05795222]] |> array2D |> CreateMatrix.DenseOfArray
+    [[0.50288142; -1.24528809; -1.05795222]] |> toM
   let b =
-    [|-0.90900761|] |> CreateVector.DenseOfArray
+    [|-0.90900761|] |> toV
 
   let (A, _) = _linearActivationForward Aprev W b ReLU
-  A |> TestHelpers.shouldBeEquivalentM [[ 3.43896131; 0.0 ]]
+  A |> shouldBeEquivalentM [[ 3.43896131; 0.0 ]]
 
   let (A, _) = _linearActivationForward Aprev W b Sigmoid
-  A |> TestHelpers.shouldBeEquivalentM [[ 0.96890023; 0.11013289 ]]
+  A |> shouldBeEquivalentM [[ 0.96890023; 0.11013289 ]]
 
 [<Fact>]
 let ``Check full forward propagation``() =
@@ -75,26 +76,26 @@ let ``Check full forward propagation``() =
      [-2.48678065;  0.91325152;  1.12706373; -1.51409323]
      [ 1.63929108; -0.4298936;   2.63128056;  0.60182225]
      [-0.33588161;  1.23773784;  0.11112817;  0.12915125]
-     [ 0.07612761; -0.15512816;  0.63422534;  0.810655  ]] |> array2D |> CreateMatrix.DenseOfArray
+     [ 0.07612761; -0.15512816;  0.63422534;  0.810655  ]] |> toM
 
   let W1 =
     [[ 0.35480861;  1.81259031; -1.3564758 ; -0.46363197;  0.82465384]
      [-1.17643148;  1.56448966;  0.71270509; -0.1810066 ;  0.53419953]
      [-0.58661296; -1.48185327;  0.85724762;  0.94309899;  0.11444143]
-     [-0.02195668; -2.12714455; -0.83440747; -0.46550831;  0.23371059]] |> array2D |> CreateMatrix.DenseOfArray
+     [-0.02195668; -2.12714455; -0.83440747; -0.46550831;  0.23371059]] |> toM
   let b1 =
-    [| 1.38503523; -0.51962709; -0.78015214; 0.95560959 |] |> CreateVector.DenseOfArray
+    [| 1.38503523; -0.51962709; -0.78015214; 0.95560959 |] |> toV
 
   let W2 =
     [[-0.12673638; -1.36861282;  1.21848065; -0.85750144]
      [-0.56147088; -1.0335199 ;  0.35877096;  1.07368134]
-     [-0.37550472;  0.39636757; -0.47144628;  2.33660781]] |> array2D |> CreateMatrix.DenseOfArray
-  let b2 = [| 1.50278553; -0.59545972; 0.52834106 |] |> CreateVector.DenseOfArray
+     [-0.37550472;  0.39636757; -0.47144628;  2.33660781]] |> toM
+  let b2 = [| 1.50278553; -0.59545972; 0.52834106 |] |> toV
 
   let W3 =
-    [[ 0.9398248 ;  0.42628539; -0.75815703]] |> array2D |> CreateMatrix.DenseOfArray
+    [[ 0.9398248 ;  0.42628539; -0.75815703]] |> toM
   let b3 =
-    [|-0.16236698|] |> CreateVector.DenseOfArray
+    [|-0.16236698|] |> toV
 
   let arch =
     { nₓ = 5
@@ -110,4 +111,96 @@ let ``Check full forward propagation``() =
   
   caches.Count |> should equal 3
   let expected = [[ 0.03921668; 0.70498921; 0.19734387; 0.04728177]]
-  AL |> TestHelpers.shouldBeEquivalentM expected
+  AL |> shouldBeEquivalentM expected
+
+[<Fact>]
+let ``Check cost function``() =
+  let Y = [[1.0; 1.0; 0.0]] |> toM
+  let Ŷ = [[0.8; 0.9; 0.4]] |> toM
+
+  let J = _computeCost Y Ŷ
+
+  J.Should().BeApproximately(0.2797765635793422, precision, System.String.Empty, Array.empty) |> ignore
+
+[<Fact>]
+let ``Check linear part of a layer's backward propagation``() =
+  let dZ =
+    [[ 1.62434536; -0.61175641; -0.52817175; -1.07296862]
+     [ 0.86540763; -2.3015387;   1.74481176; -0.7612069 ]
+     [ 0.3190391;  -0.24937038;  1.46210794; -2.06014071]] |> toM
+  let Aprev =
+    [[-0.3224172 ; -0.38405435;  1.13376944; -1.09989127]
+     [-0.17242821; -0.87785842;  0.04221375;  0.58281521]
+     [-1.10061918;  1.14472371;  0.90159072;  0.50249434]
+     [ 0.90085595; -0.68372786; -0.12289023; -0.93576943]
+     [-0.26788808;  0.53035547; -0.69166075; -0.39675353]] |> toM
+  let W =
+    [[-0.6871727 ; -0.84520564; -0.67124613; -0.0126646 ; -1.11731035]
+     [ 0.2344157 ;  1.65980218;  0.74204416; -0.19183555; -0.88762896]
+     [-0.74715829;  1.6924546 ;  0.05080775; -0.63699565;  0.19091548]] |> toM
+  let b =
+    [|2.10025514; 0.12015895; 0.61720311|] |> toV
+
+  let (dAprev, dW, db) = _linearBackward dZ Aprev W b
+
+  let dAprevExpected =
+    [[-1.15171336;  0.06718465; -0.3204696;   2.09812712]
+     [ 0.60345879; -3.72508701;  5.81700741; -3.84326836]
+     [-0.4319552;  -1.30987417;  1.72354705;  0.05070578]
+     [-0.38981415;  0.60811244; -1.25938424;  1.47191593]
+     [-2.52214926;  2.67882552; -0.67947465;  1.48119548]]
+  let dWExpected =
+    [[ 0.07313866; -0.0976715;  -0.87585828;  0.73763362;  0.00785716]
+     [ 0.85508818;  0.37530413; -0.59912655;  0.71278189; -0.58931808]
+     [ 0.97913304; -0.24376494; -0.08839671;  0.55151192; -0.10290907]]
+  let dbExpected =
+    [|-0.14713786; -0.11313155; -0.13209101|]
+
+  dAprev |> shouldBeEquivalentM dAprevExpected
+  dW |> shouldBeEquivalentM dWExpected
+  db |> shouldBeEquivalentV dbExpected
+
+[<Fact>]
+let ``Check linear and activation part of a layer's backward propagation``() =
+  let dA =
+    [[-0.41675785; -0.05626683]] |> toM
+  let Aprev =
+    [[-2.1361961 ;  1.64027081]
+     [-1.79343559; -0.84174737]
+     [ 0.50288142; -1.24528809]] |> toM
+  let W =
+    [[-1.05795222; -0.90900761;  0.55145404]] |> toM
+  let b =
+    [|2.29220801|] |> toV
+  let Z =
+    [[ 0.04153939; -1.11792545]] |> toM
+
+  let dAprev, dW, db = _linearActivationBackward dA Aprev W b Z ReLU
+
+  let dAprevExpected =
+    [[ 0.44090989; -0.0 ]
+     [ 0.37883606; -0.0 ]
+     [-0.2298228;   0.0 ]]
+  let dWExpected =
+    [[ 0.44513824;  0.37371418; -0.10478989]]
+  let dbExpected =
+    [|-0.20837892|]
+
+  dAprev |> shouldBeEquivalentM dAprevExpected
+  dW |> shouldBeEquivalentM dWExpected
+  db |> shouldBeEquivalentV dbExpected
+
+  let dAprev, dW, db = _linearActivationBackward dA Aprev W b Z Sigmoid
+
+  let dAprevExpected =
+    [[ 0.11017994;  0.01105339]
+     [ 0.09466817;  0.00949723]
+     [-0.05743092; -0.00576154]]
+  let dWExpected =
+    [[ 0.10266786;  0.09778551; -0.01968084]]
+  let dbExpected =
+    [|-0.05729622|]
+
+  dAprev |> shouldBeEquivalentM dAprevExpected
+  dW |> shouldBeEquivalentM dWExpected
+  db |> shouldBeEquivalentV dbExpected
