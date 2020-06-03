@@ -1,8 +1,11 @@
 module YannLib.Core
 
 open MathNet.Numerics.LinearAlgebra
+open System.Diagnostics
+open System
 
 (*
+
   # Dimensional Analysis
 
   ## Formula
@@ -41,6 +44,10 @@ type Architecture =
   { nₓ: int
     Layers: Layer list }
 
+type HyperParameters =
+  { Epochs : int
+    α: double }
+
 type Gradient = { dA: Matrix<double>; dW: Matrix<double>; db: Vector<double> }
 type Gradients = Map<int, Gradient>
 let _invalidGradient = { dA = _invalidMatrix; dW = _invalidMatrix; db = _invalidVector }
@@ -51,6 +58,8 @@ let _invalidCache = { Aprev = _invalidMatrix; W = _invalidMatrix; b = _invalidVe
 
 type Parameter = { W: Matrix<double>; b: Vector<double> }
 type Parameters = Map<int, Parameter>
+
+type EpochCallback = int -> TimeSpan -> double -> double -> unit
 
 let _initializeParameters (seed: int) (arch: Architecture): Parameters =
   let ws =
@@ -81,11 +90,10 @@ let _linearActivationForward (Aprev: Matrix<double>) (W: Matrix<double>) (b: Vec
   A, cache
 
 let _forwardPropagate arch (parameters: Parameters) (X: Matrix<double>): (Matrix<double> * Caches) =
-  let _folder =
-    fun (acc: Map<int, Cache>) (l, layer: Layer) ->
-      let APrev = acc.[l - 1].Aprev
-      let (A, cache) = _linearActivationForward APrev parameters.[l].W parameters.[l].b layer.Activation
-      acc |> Map.add l { cache with Aprev = A }
+  let _folder (acc: Map<int, Cache>) (l, layer: Layer) =
+    let APrev = acc.[l - 1].Aprev
+    let (A, cache) = _linearActivationForward APrev parameters.[l].W parameters.[l].b layer.Activation
+    acc |> Map.add l { cache with Aprev = A }
 
   let c0 = Map.empty |> Map.add 0 { _invalidCache with Aprev = X }
   let caches =
@@ -94,8 +102,8 @@ let _forwardPropagate arch (parameters: Parameters) (X: Matrix<double>): (Matrix
     |> List.fold _folder c0
     |> Map.remove 0
 
-  let AL = caches.[arch.Layers.Length].Aprev
-  AL, caches
+  let Ŷ = caches.[arch.Layers.Length].Aprev
+  Ŷ, caches
 
 let _computeCost (Y: Matrix<double>) (Ŷ: Matrix<double>): double =
   let m = double Y.ColumnCount
@@ -106,7 +114,7 @@ let _computeCost (Y: Matrix<double>) (Ŷ: Matrix<double>): double =
   (-1.0 / m) * cost.Item(0, 0)
 
 let _computeAccuracy (Y: Matrix<double>) (Ŷ: Matrix<double>) =
-  Prelude.undefined
+  0.0
 
 let _linearBackward (dZ: Matrix<double>) { Aprev = Aprev; W = W } =
   let m = Aprev.Shape().[1] |> double
@@ -121,25 +129,22 @@ let _linearActivationBackward (dA: Matrix<double>) cache activation =
   let dZ =
     match activation with
     | ReLU ->
-      let dZ = dA.Clone()
-      dZ.MapIndexedInplace(fun r c v -> if cache.Z.Item(r, c) <= 0.0 then 0.0 else v)
-      dZ
+      dA.PointwiseMultiply(cache.Z.PointwiseSign().PointwiseMaximum(0.0))
     | Sigmoid ->
       let s = cache.Z.Negate().PointwiseExp().Add(1.0).PointwisePower(-1.0)
       dA.PointwiseMultiply(s).PointwiseMultiply(s.Negate().Add(1.0))
 
   _linearBackward dZ cache
 
-let _backwardPropagate arch (AL: Matrix<double>) (Y: Matrix<double>) (caches: Caches): Gradients =
-  let _folder =
-    fun (acc: Gradients) (l, layer: Layer) ->
-      let (dAprev, dW, db) = _linearActivationBackward acc.[l].dA caches.[l] layer.Activation
-      let gradPrev = { _invalidGradient with dA = dAprev }
-      let grad = { acc.[l] with dW = dW; db = db }
-      acc |> Map.remove l |> Map.add l grad |> Map.add (l - 1) gradPrev
+let _backwardPropagate arch (Y: Matrix<double>) (Ŷ: Matrix<double>) (caches: Caches): Gradients =
+  let _folder (acc: Gradients) (l, layer: Layer) =
+    let (dAprev, dW, db) = _linearActivationBackward acc.[l].dA caches.[l] layer.Activation
+    let gradPrev = { _invalidGradient with dA = dAprev }
+    let grad = { acc.[l] with dW = dW; db = db }
+    acc |> Map.remove l |> Map.add l grad |> Map.add (l - 1) gradPrev
 
   let L = arch.Layers.Length
-  let dAL = - (Y.PointwiseDivide(AL) - Y.Negate().Add(1.0).PointwiseDivide(AL.Negate().Add(1.0)))
+  let dAL = - (Y.PointwiseDivide(Ŷ) - Y.Negate().Add(1.0).PointwiseDivide(Ŷ.Negate().Add(1.0)))
   let g0 = Map.empty |> Map.add L { _invalidGradient with dA = dAL }
   let grads =
     arch.Layers
@@ -149,40 +154,38 @@ let _backwardPropagate arch (AL: Matrix<double>) (Y: Matrix<double>) (caches: Ca
 
   grads
 
-let _updateParameters arch (parameters: Parameters) (lr: double) (gradients: Gradients) =
+let _updateParameters arch (α: double) (parameters: Parameters) (gradients: Gradients): Parameters =
   let _folder acc l =
-    let W = parameters.[l].W - lr * gradients.[l].dW
-    let b = parameters.[l].b - lr * gradients.[l].db
+    let W = parameters.[l].W - α * gradients.[l].dW
+    let b = parameters.[l].b - α * gradients.[l].db
     acc |> Map.add l { W = W; b = b }
 
   arch.Layers
   |> List.mapi (fun i _ -> i + 1)
   |> List.fold _folder Map.empty
 
-let trainNetwork (seed: int) (callback: double -> double -> unit) (arch: Architecture) (X: Matrix<double>) (Y: Matrix<double>) (lr: double) (epochs: int): Parameters =
-  let network = arch |> _initializeParameters seed
+let trainNetwork (seed: int) (callback: EpochCallback) (arch: Architecture) (X: Matrix<double>) (Y: Matrix<double>) (hp: HyperParameters): Parameters =
+  let timer = Stopwatch()
+  let _folder parameters epoch =
+    timer.Restart()
+    let Ŷ, caches = _forwardPropagate arch parameters X
+    let J = _computeCost Y Ŷ
+    let gs = _backwardPropagate arch Y Ŷ caches
+    let parameters = _updateParameters arch hp.α parameters gs
+    timer.Stop()
+    let accuracy = _computeAccuracy Y Ŷ
+    callback epoch timer.Elapsed J accuracy
+    parameters
 
-  //for _ = 0 to (epochs - 1) do
-  //  let Ŷ = _forwardPropagate network X
+  let ps0 = arch |> _initializeParameters seed
 
-  //  let J = _computeCost Y Ŷ
-  //  let accuracy = _computeAccuracy Y Ŷ
-
-  //  let gradients = _backwardPropagate network Y Ŷ
-
-  //  _updateParameters network lr gradients
-
-  //  callback J accuracy
-
-  Prelude.undefined
+  seq { for epoch in 0 .. (hp.Epochs - 1) do epoch }
+  |> Seq.fold _folder ps0
 
 (*
 TODO
 - Refactor out relu/sigmoid and their backwards
-- linear cache and actiavation cache seperation
-- consolidate caches
 - unit tests are independent of activation functions
-
 - compare perf with numpy
 - gradient checking
 *)

@@ -5,6 +5,7 @@ open YannLib.Core
 open FluentAssertions
 open FsUnit.Xunit
 open TestHelpers
+open System
 
 [<Fact>]
 let ``Check network initialization``() =
@@ -14,6 +15,7 @@ let ``Check network initialization``() =
         [ { n = 3; Activation = ReLU }
           { n = 1; Activation = Sigmoid } ] }
 
+  Random
   let parameters = arch |> _initializeParameters 1
 
   parameters |> Map.toList |> List.map fst |> should equal [1; 2]
@@ -246,7 +248,7 @@ let ``Check full backward propagation``() =
   let Yassess =
     [[1.0; 0.0]] |> toM
 
-  let grads = _backwardPropagate arch AL Yassess caches
+  let grads = _backwardPropagate arch Yassess AL caches
 
   let dA0 = 
     [[ 0.0       ;  0.52257901]
@@ -309,7 +311,7 @@ let ``Check update parameters``() =
   let grads = [(1, {dA = _invalidMatrix; dW = dW1; db = db1 })
                (2, {dA = _invalidMatrix; dW = dW2; db = db2 })] |> Map.ofList
 
-  let parameters = _updateParameters arch parameters 0.1 grads
+  let parameters = _updateParameters arch 0.1 parameters grads
 
   let W1 = 
     [[-0.59562069; -0.09991781; -2.14584584;  1.82662008]
