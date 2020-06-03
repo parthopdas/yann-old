@@ -4,7 +4,6 @@ open global.Xunit
 open YannLib.Core
 open FluentAssertions
 open FsUnit.Xunit
-open MathNet.Numerics.LinearAlgebra
 open TestHelpers
 
 [<Fact>]
@@ -49,8 +48,8 @@ let ``Check linear part of a layer's forward propagation``() =
   let b =
     [|-0.24937038|] |> toV
 
-  let (Z, _) = _linearForward A W b
-  Z |> shouldBeEquivalentM [[ 3.26295337; -1.23429987]]
+  let cache = _linearForward A W b
+  cache.Z |> shouldBeEquivalentM [[ 3.26295337; -1.23429987]]
 
 [<Fact>]
 let ``Check linear and activation part of a layer's forward propagation``() =
@@ -141,7 +140,7 @@ let ``Check linear part of a layer's backward propagation``() =
   let b =
     [|2.10025514; 0.12015895; 0.61720311|] |> toV
 
-  let (dAprev, dW, db) = _linearBackward dZ { _invalidCache with A = Aprev; W = W; b = b }
+  let (dAprev, dW, db) = _linearBackward dZ { _invalidCache with Aprev = Aprev; W = W; b = b }
 
   let dAprevExpected =
     [[-1.15171336;  0.06718465; -0.3204696;   2.09812712]
@@ -175,7 +174,7 @@ let ``Check linear and activation part of a layer's backward propagation``() =
   let Z =
     [[ 0.04153939; -1.11792545]] |> toM
 
-  let dAprev, dW, db = _linearActivationBackward dA { A = Aprev; W = W; b = b; Z = Z } ReLU
+  let dAprev, dW, db = _linearActivationBackward dA { Aprev = Aprev; W = W; b = b; Z = Z } ReLU
 
   let dAprevExpected =
     [[ 0.44090989; -0.0 ]
@@ -190,7 +189,7 @@ let ``Check linear and activation part of a layer's backward propagation``() =
   dW |> shouldBeEquivalentM dWExpected
   db |> shouldBeEquivalentV dbExpected
 
-  let dAprev, dW, db = _linearActivationBackward dA { A = Aprev; W = W; b = b; Z = Z } Sigmoid
+  let dAprev, dW, db = _linearActivationBackward dA { Aprev = Aprev; W = W; b = b; Z = Z } Sigmoid
 
   let dAprevExpected =
     [[ 0.11017994;  0.01105339]
@@ -204,3 +203,80 @@ let ``Check linear and activation part of a layer's backward propagation``() =
   dAprev |> shouldBeEquivalentM dAprevExpected
   dW |> shouldBeEquivalentM dWExpected
   db |> shouldBeEquivalentV dbExpected
+
+[<Fact>]
+let ``Check full backward propagation``() =
+  let arch =
+    { nₓ = 4
+      Layers =
+        [ { n = 3; Activation = ReLU }
+          { n = 1; Activation = Sigmoid } ] }
+
+  let A0 =
+    [[ 0.09649747; -1.8634927 ]
+     [-0.2773882 ; -0.35475898]
+     [-0.08274148; -0.62700068]
+     [-0.04381817; -0.47721803]] |> toM
+  let W1 =
+    [[-1.31386475;  0.88462238;  0.88131804;  1.70957306]
+     [ 0.05003364; -0.40467741; -0.54535995; -1.54647732]
+     [ 0.98236743; -1.10106763; -1.18504653; -0.2056499 ]] |> toM
+  let b1 =
+    [| 1.48614836;  0.23671627; -1.02378514|] |> toV       
+  let Z1 =
+    [[-0.7129932 ;  0.62524497]
+     [-0.16051336; -0.76883635]
+     [-0.23003072;  0.74505627]] |> toM
+
+  let A1 =
+    [[ 1.97611078; -1.24412333]
+     [-0.62641691; -0.80376609]
+     [-2.41908317; -0.92379202]] |> toM
+  let W2 =
+    [[-1.02387576;  1.12397796; -0.13191423]] |> toM
+  let b2 =
+    [|-1.62328545|] |> toV
+  let Z2 =
+    [[ 0.64667545; -0.35627076]] |> toM
+
+  let caches =
+    [(0, _invalidCache)
+     (1, { Aprev = A0; W = W1; b = b1; Z = Z1 })
+     (2, { Aprev = A1; W = W2; b = b2; Z = Z2 })] |> Map.ofList
+
+  let AL =
+    [[1.78862847; 0.43650985]] |> toM
+  let Yassess =
+    [[1.0; 0.0]] |> toM
+
+  let grads = _backwardPropagate arch AL Yassess caches
+
+  let dA0 = 
+    [[ 0.0       ;  0.52257901]
+     [ 0.0       ; -0.3269206 ]
+     [ 0.0       ; -0.32070404]
+     [ 0.0       ; -0.74079187]]
+  let dA1 = 
+    [[ 0.12913162; -0.44014127]
+     [-0.14175655;  0.48317296]
+     [ 0.01663708; -0.05670698]]
+  let dW1 = 
+    [[0.41010002; 0.07807203; 0.13798444; 0.10502167]
+     [0.0       ; 0.0       ; 0.0       ; 0.0       ]
+     [0.05283652; 0.01005865; 0.01777766; 0.0135308 ]]
+  let db1 = 
+    [|-0.22007063; 0.0; -0.02835349|]
+  let dW2 = 
+    [[-0.39202432; -0.13325855; -0.04601089]]
+  let db2 = 
+    [|0.15187861|]
+
+  grads.[0].dA |> shouldBeEquivalentM dA0
+  grads.[1].dA |> shouldBeEquivalentM dA1
+  grads.[1].dW |> shouldBeEquivalentM dW1
+  grads.[1].db |> shouldBeEquivalentV db1
+  grads.[2].dW |> shouldBeEquivalentM dW2
+  grads.[2].db |> shouldBeEquivalentV db2
+
+
+
