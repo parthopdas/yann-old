@@ -14,28 +14,27 @@ let ``Check network initialization``() =
         [ { n = 3; Activation = ReLU }
           { n = 1; Activation = Sigmoid } ] }
 
-  let nn = arch |> _initializeNetwork 1
+  let parameters = arch |> _initializeParameters 1
 
-  nn.Architecture |> should equal arch
-  nn.Parameters.Keys.Should().Equal(1, 2) |> ignore
+  parameters |> Map.toList |> List.map fst |> should equal [1; 2]
 
   let W1 =
     [[-0.002993466474; 0.01541654033]
      [-0.00463620853; 0.01904072042]
      [-0.001872509079; -0.0081251694]]
-  nn.Parameters.[1].W |> shouldBeEquivalentM W1
+  parameters.[1].W |> shouldBeEquivalentM W1
 
   let b1 =
     [|-0.002993466474; -0.00463620853; -0.001872509079|]
-  nn.Parameters.[1].b |> shouldBeEquivalentV b1
+  parameters.[1].b |> shouldBeEquivalentV b1
 
   let W2 =
     [[-0.002993466474; -0.00463620853; -0.001872509079]]
-  nn.Parameters.[2].W |> shouldBeEquivalentM W2
+  parameters.[2].W |> shouldBeEquivalentM W2
 
   let b2 =
     [|-0.002993466474|]
-  nn.Parameters.[2].b |> shouldBeEquivalentV b2
+  parameters.[2].b |> shouldBeEquivalentV b2
 
 [<Fact>]
 let ``Check linear part of a layer's forward propagation``() =
@@ -102,11 +101,9 @@ let ``Check full forward propagation``() =
         [ { n = 4; Activation = ReLU }
           { n = 3; Activation = ReLU }
           { n = 1; Activation = Sigmoid } ] }
-  let network =
-    { Architecture = arch
-      Parameters = dict [(1, {| W = W1; b = b1|}); (2, {| W = W2; b = b2|}); (3, {| W = W3; b = b3|})] }
+  let parameters = Map.ofList [(1, { W = W1; b = b1 }); (2, { W = W2; b = b2 }); (3, { W = W3; b = b3 })]
 
-  let AL, caches = _forwardPropagate network X
+  let AL, caches = _forwardPropagate arch parameters X
   
   caches.Count |> should equal 3
   let expected = [[ 0.03921668; 0.70498921; 0.19734387; 0.04728177]]
@@ -278,5 +275,55 @@ let ``Check full backward propagation``() =
   grads.[2].dW |> shouldBeEquivalentM dW2
   grads.[2].db |> shouldBeEquivalentV db2
 
+[<Fact>]
+let ``Check update parameters``() =
+  let arch =
+    { nₓ = 2
+      Layers =
+        [ { n = 3; Activation = ReLU }
+          { n = 1; Activation = Sigmoid } ] }
+  let W1 = 
+    [[-0.41675785; -0.05626683; -2.1361961 ;  1.64027081]
+     [-1.79343559; -0.84174737;  0.50288142; -1.24528809]
+     [-1.05795222; -0.90900761;  0.55145404;  2.29220801]] |> toM
+  let b1 = 
+      [| 0.04153939; -1.11792545; 0.53905832 |] |> toV
+  let W2 = 
+      [[-0.5961597 ; -0.0191305 ;  1.17500122]] |> toM
+  let b2 = 
+      [|-0.74787095|] |> toV
 
+  let parameters = Map.ofList [(1, { W = W1; b = b1 }); (2, { W = W2; b = b2 })]
+    
+  let dW1 = 
+    [[ 1.78862847;  0.43650985;  0.09649747; -1.8634927 ]
+     [-0.2773882 ; -0.35475898; -0.08274148; -0.62700068]
+     [-0.04381817; -0.47721803; -1.31386475;  0.88462238]] |> toM
+  let db1 = 
+    [|0.88131804; 1.70957306; 0.05003364|] |> toV
+  let dW2 = 
+    [[-0.40467741; -0.54535995; -1.54647732]] |> toM
+  let db2 = 
+      [|0.98236743|] |> toV
+
+  let grads = [(1, {dA = _invalidMatrix; dW = dW1; db = db1 })
+               (2, {dA = _invalidMatrix; dW = dW2; db = db2 })] |> Map.ofList
+
+  let parameters = _updateParameters arch parameters 0.1 grads
+
+  let W1 = 
+    [[-0.59562069; -0.09991781; -2.14584584;  1.82662008]
+     [-1.76569676; -0.80627147;  0.51115557; -1.18258802]
+     [-1.0535704 ; -0.86128581;  0.68284052;  2.20374577]] 
+  let b1 = 
+    [|-0.04659241; -1.28888275; 0.53405496|]
+  let W2 = 
+    [[-0.55569196;  0.0354055 ;  1.32964895]] 
+  let b2 = 
+    [|-0.84610769|]
+
+  parameters.[1].W |> shouldBeEquivalentM W1
+  parameters.[1].b |> shouldBeEquivalentV b1
+  parameters.[2].W |> shouldBeEquivalentM W2
+  parameters.[2].b |> shouldBeEquivalentV b2
 

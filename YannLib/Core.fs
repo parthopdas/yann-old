@@ -1,7 +1,6 @@
 module YannLib.Core
 
 open MathNet.Numerics.LinearAlgebra
-open System.Collections.Generic
 
 (*
   # Dimensional Analysis
@@ -27,7 +26,6 @@ open System.Collections.Generic
 
  *)
 
-
 let _invalidMatrix = Matrix<double>.Build.Sparse(1, 1, 0.0)
 let _invalidVector = Vector<double>.Build.Sparse(1, 0.0)
 
@@ -51,11 +49,10 @@ type Cache = { Aprev: Matrix<double>; W: Matrix<double>; b: Vector<double>; Z: M
 type Caches = Map<int, Cache>
 let _invalidCache = { Aprev = _invalidMatrix; W = _invalidMatrix; b = _invalidVector; Z = _invalidMatrix }
 
-type Network =
-  { Architecture: Architecture
-    Parameters: IDictionary<int, {| W: Matrix<double>; b: Vector<double> |}> }
+type Parameter = { W: Matrix<double>; b: Vector<double> }
+type Parameters = Map<int, Parameter>
 
-let _initializeNetwork (seed: int) (arch: Architecture): Network =
+let _initializeParameters (seed: int) (arch: Architecture): Parameters =
   let ws =
     seq { yield arch.nₓ; yield! arch.Layers |> Seq.map (fun l -> l.n) }
     |> Seq.pairwise
@@ -65,12 +62,9 @@ let _initializeNetwork (seed: int) (arch: Architecture): Network =
     arch.Layers
     |> Seq.map (fun l -> Vector<double>.Build.Random(l.n, seed) * 0.01)
 
-  let ps =
-    Seq.zip ws bs
-    |> Seq.mapi (fun i (W, b) -> i + 1, {| W = W; b = b |})
-    |> dict
-
-  { Architecture = arch; Parameters = ps }
+  Seq.zip ws bs
+  |> Seq.mapi (fun i (W, b) -> i + 1, { W = W; b = b })
+  |> Map.ofSeq
 
 let _linearForward (Aprev: Matrix<double>) (W: Matrix<double>) (b: Vector<double>) =
   let Z = W.Multiply(Aprev) + b.BroadcastC(Aprev.ColumnCount)
@@ -86,21 +80,21 @@ let _linearActivationForward (Aprev: Matrix<double>) (W: Matrix<double>) (b: Vec
 
   A, cache
 
-let _forwardPropagate network (X: Matrix<double>): (Matrix<double> * Caches) =
+let _forwardPropagate arch (parameters: Parameters) (X: Matrix<double>): (Matrix<double> * Caches) =
   let _folder =
     fun (acc: Map<int, Cache>) (l, layer: Layer) ->
       let APrev = acc.[l - 1].Aprev
-      let (A, cache) = _linearActivationForward APrev network.Parameters.[l].W network.Parameters.[l].b layer.Activation
+      let (A, cache) = _linearActivationForward APrev parameters.[l].W parameters.[l].b layer.Activation
       acc |> Map.add l { cache with Aprev = A }
 
   let c0 = Map.empty |> Map.add 0 { _invalidCache with Aprev = X }
   let caches =
-    network.Architecture.Layers
+    arch.Layers
     |> List.mapi (fun i l -> (i + 1), l)
     |> List.fold _folder c0
     |> Map.remove 0
 
-  let AL = caches.[network.Architecture.Layers.Length].Aprev
+  let AL = caches.[arch.Layers.Length].Aprev
   AL, caches
 
 let _computeCost (Y: Matrix<double>) (Ŷ: Matrix<double>): double =
@@ -155,16 +149,18 @@ let _backwardPropagate arch (AL: Matrix<double>) (Y: Matrix<double>) (caches: Ca
 
   grads
 
-let _updateParameters (network: Network) (lr: double) (gradients: Gradients) =
-  let updateLayerParameters l =
-    let W = network.Parameters.[l].W - lr * gradients.[l].dW
-    let b = network.Parameters.[l].b - lr * gradients.[l].db
-    network.Parameters.[l] <- {| W = W; b = b |}
-  for i = 1 to network.Architecture.Layers.Length do
-    updateLayerParameters i
+let _updateParameters arch (parameters: Parameters) (lr: double) (gradients: Gradients) =
+  let _folder acc l =
+    let W = parameters.[l].W - lr * gradients.[l].dW
+    let b = parameters.[l].b - lr * gradients.[l].db
+    acc |> Map.add l { W = W; b = b }
 
-let trainNetwork (seed: int) (callback: double -> double -> unit) (arch: Architecture) (X: Matrix<double>) (Y: Matrix<double>) (lr: double) (epochs: int): Network =
-  let network = arch |> _initializeNetwork seed
+  arch.Layers
+  |> List.mapi (fun i _ -> i + 1)
+  |> List.fold _folder Map.empty
+
+let trainNetwork (seed: int) (callback: double -> double -> unit) (arch: Architecture) (X: Matrix<double>) (Y: Matrix<double>) (lr: double) (epochs: int): Parameters =
+  let network = arch |> _initializeParameters seed
 
   //for _ = 0 to (epochs - 1) do
   //  let Ŷ = _forwardPropagate network X
@@ -178,7 +174,7 @@ let trainNetwork (seed: int) (callback: double -> double -> unit) (arch: Archite
 
   //  callback J accuracy
 
-  network
+  Prelude.undefined
 
 (*
 TODO
@@ -189,7 +185,4 @@ TODO
 
 - compare perf with numpy
 - gradient checking
-
-- split network into arch and params
 *)
-
