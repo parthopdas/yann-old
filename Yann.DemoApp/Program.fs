@@ -1,11 +1,28 @@
-// Learn more about F# at http://fsharp.org
+open MathNet.Numerics.Data.Matlab
+open YannLib.Core
 
-open System
+let callback epoch elapsed cost accuracy =
+  if epoch % 100 = 0 then
+    printfn "[%O] Epoch=%d Cost=%f Accuracy=%f" elapsed epoch cost accuracy
+  else
+    ()
 
 [<EntryPoint>]
-let main argv =
-    MathNet.Numerics.Control.UseNativeMKL();
-    // TODO: Set random number generator seed
+let main _ =
+  MathNet.Numerics.Control.UseNativeMKL();
 
-    printfn "Hello World from F#!"
-    0 // return an integer exit code
+  let data = MatlabReader.ReadAll<double>("dl.al.cats.mat", "X", "Y");
+
+  let arch =
+    { nₓ = 12288
+      Layers =
+        [ { n = 20; Activation = ReLU }
+          { n = 7; Activation = ReLU }
+          { n = 5; Activation = ReLU }
+          { n = 1; Activation = Sigmoid } ] }
+
+  let hp =
+    { Epochs = 2500
+      α = 0.001 }
+  let parameters = trainNetwork 1 callback arch data.["X"] data.["Y"] hp
+  0

@@ -48,14 +48,17 @@ type HyperParameters =
   { Epochs : int
     α: double }
 
+[<DebuggerDisplay("dA = {dA.ShapeString()}, dW = {dW.ShapeString()}, db = {db.ShapeString()}")>]
 type Gradient = { dA: Matrix<double>; dW: Matrix<double>; db: Vector<double> }
 type Gradients = Map<int, Gradient>
 let _invalidGradient = { dA = _invalidMatrix; dW = _invalidMatrix; db = _invalidVector }
 
+[<DebuggerDisplay("Aprev = {Aprev.ShapeString()}, W = {W.ShapeString()}, b = {b.ShapeString()}, Z = {Z.ShapeString()}")>]
 type Cache = { Aprev: Matrix<double>; W: Matrix<double>; b: Vector<double>; Z: Matrix<double> }
 type Caches = Map<int, Cache>
 let _invalidCache = { Aprev = _invalidMatrix; W = _invalidMatrix; b = _invalidVector; Z = _invalidMatrix }
 
+[<DebuggerDisplay("W = {W.ShapeString()}, b = {b.ShapeString()}")>]
 type Parameter = { W: Matrix<double>; b: Vector<double> }
 type Parameters = Map<int, Parameter>
 
@@ -90,27 +93,18 @@ let _linearActivationForward (Aprev: Matrix<double>) (W: Matrix<double>) (b: Vec
   A, cache
 
 let _forwardPropagate arch (parameters: Parameters) (X: Matrix<double>): (Matrix<double> * Caches) =
-  let _folder (acc: Map<int, Cache>) (l, layer: Layer) =
-    let APrev = acc.[l - 1].Aprev
+  let _folder (APrev: Matrix<double>, acc: Map<int, Cache>) (l, layer: Layer) =
     let (A, cache) = _linearActivationForward APrev parameters.[l].W parameters.[l].b layer.Activation
-    acc |> Map.add l { cache with Aprev = A }
+    (A, acc |> Map.add l cache)
 
-  let c0 = Map.empty |> Map.add 0 { _invalidCache with Aprev = X }
-  let caches =
-    arch.Layers
-    |> List.mapi (fun i l -> (i + 1), l)
-    |> List.fold _folder c0
-    |> Map.remove 0
-
-  let Ŷ = caches.[arch.Layers.Length].Aprev
-  Ŷ, caches
+  arch.Layers
+  |> List.mapi (fun i l -> (i + 1), l)
+  |> List.fold _folder (X, Map.empty)
 
 let _computeCost (Y: Matrix<double>) (Ŷ: Matrix<double>): double =
-  let m = double Y.ColumnCount
-
   let cost = Y.Multiply(Ŷ.PointwiseLog().Transpose()) + (Y.Negate().Add(1.0).Multiply(Ŷ.Negate().Add(1.0).PointwiseLog().Transpose()))
-  assert ((cost.RowCount, cost.ColumnCount) = (1, 1))
 
+  let m = double Y.ColumnCount
   (-1.0 / m) * cost.Item(0, 0)
 
 let _computeAccuracy (Y: Matrix<double>) (Ŷ: Matrix<double>) =
@@ -176,6 +170,7 @@ let trainNetwork (seed: int) (callback: EpochCallback) (arch: Architecture) (X: 
     let accuracy = _computeAccuracy Y Ŷ
     callback epoch timer.Elapsed J accuracy
     parameters
+
 
   let ps0 = arch |> _initializeParameters seed
 
