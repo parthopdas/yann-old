@@ -3,6 +3,7 @@ module YannLib.Core
 open MathNet.Numerics.LinearAlgebra
 open System.Diagnostics
 open System
+open MathNet.Numerics.Distributions
 
 (*
 
@@ -48,19 +49,23 @@ type HyperParameters =
   { Epochs : int
     α: double }
 
-[<DebuggerDisplay("dA = {dA.ShapeString()}, dW = {dW.ShapeString()}, db = {db.ShapeString()}")>]
-type Gradient = { dA: Matrix<double>; dW: Matrix<double>; db: Vector<double> }
-type Gradients = Map<int, Gradient>
-let _invalidGradient = { dA = _invalidMatrix; dW = _invalidMatrix; db = _invalidVector }
+[<DebuggerDisplay("W = {W.ShapeString()}, b = {b.ShapeString()}")>]
+type Parameter = { W: Matrix<double>; b: Vector<double> }
+type Parameters = Map<int, Parameter>
+
+type ParameterInitialization = 
+  | Parameters of Parameters
+  | Seed of int
 
 [<DebuggerDisplay("Aprev = {Aprev.ShapeString()}, W = {W.ShapeString()}, b = {b.ShapeString()}, Z = {Z.ShapeString()}")>]
 type Cache = { Aprev: Matrix<double>; W: Matrix<double>; b: Vector<double>; Z: Matrix<double> }
 type Caches = Map<int, Cache>
 let _invalidCache = { Aprev = _invalidMatrix; W = _invalidMatrix; b = _invalidVector; Z = _invalidMatrix }
 
-[<DebuggerDisplay("W = {W.ShapeString()}, b = {b.ShapeString()}")>]
-type Parameter = { W: Matrix<double>; b: Vector<double> }
-type Parameters = Map<int, Parameter>
+[<DebuggerDisplay("dA = {dA.ShapeString()}, dW = {dW.ShapeString()}, db = {db.ShapeString()}")>]
+type Gradient = { dA: Matrix<double>; dW: Matrix<double>; db: Vector<double> }
+type Gradients = Map<int, Gradient>
+let _invalidGradient = { dA = _invalidMatrix; dW = _invalidMatrix; db = _invalidVector }
 
 type EpochCallback = int -> TimeSpan -> double -> double -> unit
 
@@ -68,11 +73,11 @@ let _initializeParameters (seed: int) (arch: Architecture): Parameters =
   let ws =
     seq { yield arch.nₓ; yield! arch.Layers |> Seq.map (fun l -> l.n) }
     |> Seq.pairwise
-    |> Seq.map (fun (nPrev, n) -> Matrix<double>.Build.Random(n, nPrev, seed) * 0.01)
+    |> Seq.mapi (fun i (nPrev, n) -> Matrix<double>.Build.Random(n, nPrev, Normal.WithMeanVariance(0.0, 1.0, Random(seed + i))) * 0.01)
 
   let bs =
     arch.Layers
-    |> Seq.map (fun l -> Vector<double>.Build.Random(l.n, seed) * 0.01)
+    |> Seq.map (fun l -> Vector<double>.Build.Dense(l.n, 0.0))
 
   Seq.zip ws bs
   |> Seq.mapi (fun i (W, b) -> i + 1, { W = W; b = b })
@@ -103,6 +108,7 @@ let _forwardPropagate arch (parameters: Parameters) (X: Matrix<double>): (Matrix
 
 let _computeCost (Y: Matrix<double>) (Ŷ: Matrix<double>): double =
   let cost = Y.Multiply(Ŷ.PointwiseLog().Transpose()) + (Y.Negate().Add(1.0).Multiply(Ŷ.Negate().Add(1.0).PointwiseLog().Transpose()))
+  assert ((cost.RowCount, cost.ColumnCount) = (1, 1))
 
   let m = double Y.ColumnCount
   (-1.0 / m) * cost.Item(0, 0)
@@ -158,21 +164,23 @@ let _updateParameters arch (α: double) (parameters: Parameters) (gradients: Gra
   |> List.mapi (fun i _ -> i + 1)
   |> List.fold _folder Map.empty
 
-let trainNetwork (seed: int) (callback: EpochCallback) (arch: Architecture) (X: Matrix<double>) (Y: Matrix<double>) (hp: HyperParameters): Parameters =
+let trainNetwork paramsInit (callback: EpochCallback) (arch: Architecture) (X: Matrix<double>) (Y: Matrix<double>) (hp: HyperParameters): Parameters =
   let timer = Stopwatch()
   let _folder parameters epoch =
     timer.Restart()
     let Ŷ, caches = _forwardPropagate arch parameters X
-    let J = _computeCost Y Ŷ
     let gs = _backwardPropagate arch Y Ŷ caches
     let parameters = _updateParameters arch hp.α parameters gs
     timer.Stop()
+    let J = _computeCost Y Ŷ
     let accuracy = _computeAccuracy Y Ŷ
     callback epoch timer.Elapsed J accuracy
     parameters
 
-
-  let ps0 = arch |> _initializeParameters seed
+  let ps0 = 
+    match paramsInit with
+    | Parameters ps -> ps
+    | Seed s -> arch |> _initializeParameters s
 
   seq { for epoch in 0 .. (hp.Epochs - 1) do epoch }
   |> Seq.fold _folder ps0

@@ -10,7 +10,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="dl.al.cats.mat">
+    <None Include="deeplearning.ai.C1W4.mat">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="parameters.mat">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
