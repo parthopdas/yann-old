@@ -9,6 +9,7 @@
     <Compile Include="Extensions.fs" />
     <Compile Include="Activations.fs" />
     <Compile Include="DNN.fs" />
+    <Compile Include="DataLoaders.fs" />
   </ItemGroup>
 
   <ItemGroup>

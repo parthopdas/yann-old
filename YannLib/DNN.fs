@@ -32,6 +32,7 @@ open MathNet.Numerics.LinearAlgebra
   nₓ      = 3
   Layers  = 4, 5, 2
   m       = 7
+  L       = 3
 
   [  W1    A0    b1      A1   ]    [  W2    A1    b2      A2   ]    [  W3    A2    b3   =  A3   ]
   [ (4x3).(3x7)+(4x1) = (4x7) ] -> [ (5x4).(4x7)+(5x1) = (5x7) ] -> [ (2x5).(5x7)+(2x1) = (2x7) ]
