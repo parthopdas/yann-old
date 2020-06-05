@@ -7,10 +7,11 @@
   <ItemGroup>
     <Compile Include="YaFunTK.fs" />
     <Compile Include="Extensions.fs" />
-    <Compile Include="Core.fs" />
+    <Compile Include="DNN.fs" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="MathNet.Numerics.Data.Matlab" Version="4.0.0" />
     <PackageReference Include="MathNet.Numerics.FSharp" Version="4.11.0" />
     <PackageReference Include="MathNet.Numerics.MKL.Win-x64" Version="2.4.0" />
   </ItemGroup>

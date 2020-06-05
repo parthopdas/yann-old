@@ -1,4 +1,4 @@
-module YannLib.Core
+module YannLib.DNN
 
 open MathNet.Numerics.LinearAlgebra
 open System.Diagnostics
@@ -73,7 +73,7 @@ let _initializeParameters (seed: int) (arch: Architecture): Parameters =
   let ws =
     seq { yield arch.nₓ; yield! arch.Layers |> Seq.map (fun l -> l.n) }
     |> Seq.pairwise
-    |> Seq.mapi (fun i (nPrev, n) -> Matrix<double>.Build.Random(n, nPrev, Normal.WithMeanVariance(0.0, 1.0, Random(seed + i))) * 0.01)
+    |> Seq.mapi (fun i (nPrev, n) -> Matrix<double>.Build.Random(n, nPrev, Normal.WithMeanVariance(0.0, 1.0, Random(seed + i))) * Math.Sqrt(2.0 / double nPrev))
 
   let bs =
     arch.Layers

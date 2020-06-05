@@ -1,11 +1,10 @@
-module YannLib.Tests.CoreTests
+module YannLib.Tests.DNNTests
 
 open global.Xunit
-open YannLib.Core
+open YannLib.DNN
 open FluentAssertions
 open FsUnit.Xunit
 open TestHelpers
-open System
 
 [<Fact>]
 let ``Check network initialization``() =
@@ -15,27 +14,26 @@ let ``Check network initialization``() =
         [ { n = 3; Activation = ReLU }
           { n = 1; Activation = Sigmoid } ] }
 
-  Random
   let parameters = arch |> _initializeParameters 1
 
   parameters |> Map.toList |> List.map fst |> should equal [1; 2]
 
   let W1 =
-    [[-0.002993466474; 0.01541654033]
-     [-0.00463620853; 0.01904072042]
-     [-0.001872509079; -0.0081251694]]
+    [[-0.29934664737072975; 1.5416540334645064]
+     [-0.46362085300372824; 1.9040720416931394]
+     [-0.18725090789339249; -0.81251694004155461]]
   parameters.[1].W |> shouldBeEquivalentM W1
 
   let b1 =
-    [|-0.002993466474; -0.00463620853; -0.001872509079|]
+    [|0.0; 0.0; 0.0|]
   parameters.[1].b |> shouldBeEquivalentV b1
 
   let W2 =
-    [[-0.002993466474; -0.00463620853; -0.001872509079]]
+    [[1.1451904988705597; -0.40484897142313458; -0.5409508035900182]]
   parameters.[2].W |> shouldBeEquivalentM W2
 
   let b2 =
-    [|-0.002993466474|]
+    [|0.0|]
   parameters.[2].b |> shouldBeEquivalentV b2
 
 [<Fact>]

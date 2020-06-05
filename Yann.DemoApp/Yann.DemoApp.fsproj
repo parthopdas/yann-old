@@ -19,7 +19,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="MathNet.Numerics.Data.Matlab" Version="4.0.0" />
     <PackageReference Include="ScottPlot.WPF" Version="4.0.34" />
   </ItemGroup>
 

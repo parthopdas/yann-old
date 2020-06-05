@@ -2,12 +2,13 @@
 
   <PropertyGroup>
     <TargetFramework>netcoreapp3.1</TargetFramework>
+    <OutputType>Library</OutputType>
   </PropertyGroup>
 
   <ItemGroup>
     <Compile Include="TestHelpers.fs" />
     <Compile Include="PerfTests.fs" />
-    <Compile Include="CoreTests.fs" />
+    <Compile Include="DNNTests.fs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,5 +1,5 @@
 open MathNet.Numerics.Data.Matlab
-open YannLib.Core
+open YannLib.DNN
 
 let callback epoch elapsed cost accuracy =
   if epoch % 100 = 0 then
@@ -37,6 +37,6 @@ let main _ =
       α = 0.0075 }
 
   let ps0 = loadParameters 4 "parameters.mat"
-  let parameters = trainNetwork (Parameters ps0) callback arch data.["X"] data.["Y"] hp
+  let parameters = trainNetwork (Seed 1) callback arch data.["X"] data.["Y"] hp
 
   0
