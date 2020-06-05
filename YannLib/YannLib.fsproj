@@ -7,6 +7,7 @@
   <ItemGroup>
     <Compile Include="YaFunTK.fs" />
     <Compile Include="Extensions.fs" />
+    <Compile Include="Activations.fs" />
     <Compile Include="DNN.fs" />
   </ItemGroup>
 

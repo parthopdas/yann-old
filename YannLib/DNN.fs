@@ -1,19 +1,27 @@
 module YannLib.DNN
 
-open MathNet.Numerics.LinearAlgebra
-open System.Diagnostics
 open System
+open System.Diagnostics
 open MathNet.Numerics.Distributions
+open MathNet.Numerics.LinearAlgebra
 
 (*
 
-  # Dimensional Analysis
+  # Notation & Dimensional Analysis
 
   ## Formula
+
+  m  = # of training input feature vectors
+  nₓ = Dimension of input feature vector
+  X = Input
   A₀ = X
   Zₗ = Wₗ.Aₗ₋₁ + bₗ
   Aₗ = gₗ(Zₗ)
+  Ŷ = Output of the last layer
+  Y = Expected output
+  L = # layers
 
+  dim(X) = nₓ x m
   dim(Wₗ) = nₗ x nₗ₋₁
   dim(bₗ) = nₗ x 1
   dim(Zₗ) = nₗ₋₁ x m
@@ -36,6 +44,14 @@ let _invalidVector = Vector<double>.Build.Sparse(1, 0.0)
 type Activation =
   | ReLU
   | Sigmoid
+
+let _activationsForward : Map<Activation, Matrix<double> -> Matrix<double>> =
+  [ (ReLU, Activations.ReLU.forward)
+    (Sigmoid, Activations.Sigmoid.forward) ] |> Map.ofList
+
+let _activationsBackward : Map<Activation, Matrix<double> -> Matrix<double> -> Matrix<double>> =
+  [ (ReLU, Activations.ReLU.backward)
+    (Sigmoid, Activations.Sigmoid.backward) ] |> Map.ofList
 
 type Layer =
   { n: int
@@ -89,12 +105,7 @@ let _linearForward (Aprev: Matrix<double>) (W: Matrix<double>) (b: Vector<double
 
 let _linearActivationForward (Aprev: Matrix<double>) (W: Matrix<double>) (b: Vector<double>) activation =
   let cache = _linearForward Aprev W b
-
-  let A =
-    match activation with
-    | ReLU -> cache.Z.PointwiseMaximum(0.0)
-    | Sigmoid -> cache.Z.Negate().PointwiseExp().Add(1.0).PointwisePower(-1.0)
-
+  let A = _activationsForward.[activation] cache.Z
   A, cache
 
 let _forwardPropagate arch (parameters: Parameters) (X: Matrix<double>): (Matrix<double> * Caches) =
@@ -126,14 +137,7 @@ let _linearBackward (dZ: Matrix<double>) { Aprev = Aprev; W = W } =
   dAprev, dW, db
 
 let _linearActivationBackward (dA: Matrix<double>) cache activation =
-  let dZ =
-    match activation with
-    | ReLU ->
-      dA.PointwiseMultiply(cache.Z.PointwiseSign().PointwiseMaximum(0.0))
-    | Sigmoid ->
-      let s = cache.Z.Negate().PointwiseExp().Add(1.0).PointwisePower(-1.0)
-      dA.PointwiseMultiply(s).PointwiseMultiply(s.Negate().Add(1.0))
-
+  let dZ = _activationsBackward.[activation] cache.Z dA
   _linearBackward dZ cache
 
 let _backwardPropagate arch (Y: Matrix<double>) (Ŷ: Matrix<double>) (caches: Caches): Gradients =
@@ -184,11 +188,3 @@ let trainNetwork paramsInit (callback: EpochCallback) (arch: Architecture) (X: M
 
   seq { for epoch in 0 .. (hp.Epochs - 1) do epoch }
   |> Seq.fold _folder ps0
-
-(*
-TODO
-- Refactor out relu/sigmoid and their backwards
-- unit tests are independent of activation functions
-- compare perf with numpy
-- gradient checking
-*)
