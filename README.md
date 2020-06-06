@@ -7,16 +7,20 @@
 
 ## Features
 
-- Uses [Math.NET Numerics](https://numerics.mathdotnet.com/) [~33% slower than numpy implementation for Cats vs non-Cats Week 4 example on ThinkPad X1 Extreme]
-- Customizable L-layer FC DNN Library (Unit tested + Demo apps)
-- Activation: ReLU, Sigmoid
+- Written in F#/.NET Core 3 using [Math.NET Numerics on MKL](https://numerics.mathdotnet.com/) 
+- Generic Vectorized L-layer FC DNN Library (with unit tests and demo apps)
 - Hyperparameters: L, α, Epochs
-- Initialization: He
+- Initializations: He
+- Activations: ReLU, Sigmoid
+- Cost Functions: Cross entropy
 - Basic transfer learning
+- Gradient checking
+
+> Without any performance tuning, it is currently ~33% slower than the numpy implementation for Cats vs non-Cats Week 4 example on ThinkPad X1 Extreme]
 
 ## Primary DNN Workflow
 
-> Image (c) [@SkalskiP](https://github.com/SkalskiP)
+> Image (c) [@SkalskiP](https://github.com/SkalskiP/ILearnDeepLearning.py/tree/master/01_mysteries_of_neural_networks/03_numpy_neural_net)
 
 ![Deep Neural Network Workflow](./content/images/DNNWorkflow.gif "Deep Neural Network Workflow")
 

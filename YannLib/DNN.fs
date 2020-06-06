@@ -169,13 +169,68 @@ let _updateParameters arch (α: double) (parameters: Parameters) (gradients: Gra
   |> List.mapi (fun i _ -> i + 1)
   |> List.fold _folder Map.empty
 
+// NOTE: Inspiration from deeplearning.ai & https://stats.stackexchange.com/questions/332089/numerical-gradient-checking-best-practices
+let _calculateNumericalGradients ε arch (parameters: Parameters) (X: Matrix<double>) (Y: Matrix<double>) =
+  let updateParamsW (l, r, c) ε =
+    // NOTE: This clone will happen r x c times per W. Is there a better way?
+    let W' = parameters.[l].W.Clone()
+    W'.[r, c] <- W'.[r, c] + ε
+    parameters |> Map.remove l |> Map.add l { parameters.[l] with W = W'  }
+
+  let updateParamsb (l, i, _) ε =
+    // NOTE: This clone will happen r x c times per W. Is there a better way?
+    let b' = parameters.[l].b.Clone()
+    b'.[i] <- b'.[i] + ε
+    parameters |> Map.remove l |> Map.add l { parameters.[l] with b = b'  }
+
+  let getCostW lrc ε =
+    let p = updateParamsW lrc ε
+    let Ŷ, _ = _forwardPropagate arch p X
+    _computeCost Y Ŷ
+
+  let getCostb li0 ε =
+    let p = updateParamsb li0 ε
+    let Ŷ, _ = _forwardPropagate arch p X
+    _computeCost Y Ŷ
+
+  let _folderW acc lrc =
+    let Jpos = getCostW lrc ε
+    let Jneg = getCostW lrc -ε
+    let grad' = (Jpos - Jneg) / (2.0 * ε)
+    acc |> Map.add ('W', lrc) grad'
+
+  let _folderb acc li0 =
+    let Jpos = getCostb li0 ε
+    let Jneg = getCostb li0 -ε
+    let grad' = (Jpos - Jneg) / (2.0 * ε)
+    acc |> Map.add ('b', li0) grad'
+
+  let gradsW =
+    seq {
+      for kv in parameters do
+        for r in 0 .. (kv.Value.W.RowCount - 1) do
+          for c in 0 .. (kv.Value.W.ColumnCount - 1) do
+            yield kv.Key, r, c
+    }
+    |> Seq.fold _folderW Map.empty
+
+  let gradsWb = 
+    seq {
+      for kv in parameters do
+        for i in 0 .. (kv.Value.b.Count - 1) do
+          yield kv.Key, i, 0
+    }
+    |> Seq.fold _folderb gradsW
+
+  gradsWb
+
 let trainNetwork paramsInit (callback: EpochCallback) (arch: Architecture) (X: Matrix<double>) (Y: Matrix<double>) (hp: HyperParameters): Parameters =
   let timer = Stopwatch()
   let _folder parameters epoch =
     timer.Restart()
     let Ŷ, caches = _forwardPropagate arch parameters X
-    let gs = _backwardPropagate arch Y Ŷ caches
-    let parameters = _updateParameters arch hp.α parameters gs
+    let gradients = _backwardPropagate arch Y Ŷ caches
+    let parameters = _updateParameters arch hp.α parameters gradients
     timer.Stop()
     let J = _computeCost Y Ŷ
     let accuracy = _computeAccuracy Y Ŷ
@@ -189,3 +244,32 @@ let trainNetwork paramsInit (callback: EpochCallback) (arch: Architecture) (X: M
 
   seq { for epoch in 0 .. (hp.Epochs - 1) do epoch }
   |> Seq.fold _folder ps0
+
+let calculateDeltaForGradientCheck ε arch (parameters: Parameters) (X: Matrix<double>) (Y: Matrix<double>) =
+  let grads' =
+    _calculateNumericalGradients ε arch parameters X Y
+    |> Seq.sortBy (fun kv -> kv.Key)
+    |> Seq.map (fun kv -> kv.Value)
+    |> Vector<double>.Build.DenseOfEnumerable
+
+  let Ŷ, caches = _forwardPropagate arch parameters X
+  let gradients = _backwardPropagate arch Y Ŷ caches |> Map.remove 0
+
+  let gradsW =
+    seq {
+      for kv in gradients do
+        for r in 0 .. (kv.Value.dW.RowCount - 1) do
+          for c in 0 .. (kv.Value.dW.ColumnCount - 1) do
+            yield kv.Value.dW.[r, c]
+    }
+  let gradsb =
+    seq {
+      for kv in gradients do
+        for i in 0 .. (kv.Value.db.Count - 1) do
+          yield kv.Value.db.[i]
+    }
+  let grads = 
+    Seq.append gradsW gradsb
+    |> Vector<double>.Build.DenseOfEnumerable
+
+  (grads - grads').L2Norm() / (grads.L2Norm() + grads'.L2Norm())
