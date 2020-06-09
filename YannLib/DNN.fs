@@ -178,32 +178,21 @@ let _calculateNumericalGradients ε arch (parameters: Parameters) (X: Matrix<dou
     parameters |> Map.remove l |> Map.add l { parameters.[l] with W = W'  }
 
   let updateParamsb (l, i, _) ε =
-    // NOTE: This clone will happen r x c times per W. Is there a better way?
+    // NOTE: This clone will happen r x c times per b. Is there a better way?
     let b' = parameters.[l].b.Clone()
     b'.[i] <- b'.[i] + ε
     parameters |> Map.remove l |> Map.add l { parameters.[l] with b = b'  }
 
-  let getCostW lrc ε =
-    let p = updateParamsW lrc ε
+  let getCost updateParams index ε =
+    let p = updateParams index ε
     let Ŷ, _ = _forwardPropagate arch p X
     _computeCost Y Ŷ
 
-  let getCostb li0 ε =
-    let p = updateParamsb li0 ε
-    let Ŷ, _ = _forwardPropagate arch p X
-    _computeCost Y Ŷ
-
-  let _folderW acc lrc =
-    let Jpos = getCostW lrc ε
-    let Jneg = getCostW lrc -ε
+  let _folder ptype updateParams acc index =
+    let Jpos = getCost updateParams index ε
+    let Jneg = getCost updateParams index -ε
     let grad' = (Jpos - Jneg) / (2.0 * ε)
-    acc |> Map.add ('W', lrc) grad'
-
-  let _folderb acc li0 =
-    let Jpos = getCostb li0 ε
-    let Jneg = getCostb li0 -ε
-    let grad' = (Jpos - Jneg) / (2.0 * ε)
-    acc |> Map.add ('b', li0) grad'
+    acc |> Map.add (ptype, index) grad'
 
   let gradsW =
     seq {
@@ -212,7 +201,7 @@ let _calculateNumericalGradients ε arch (parameters: Parameters) (X: Matrix<dou
           for c in 0 .. (kv.Value.W.ColumnCount - 1) do
             yield kv.Key, r, c
     }
-    |> Seq.fold _folderW Map.empty
+    |> Seq.fold (_folder 'W' updateParamsW) Map.empty
 
   let gradsWb = 
     seq {
@@ -220,7 +209,7 @@ let _calculateNumericalGradients ε arch (parameters: Parameters) (X: Matrix<dou
         for i in 0 .. (kv.Value.b.Count - 1) do
           yield kv.Key, i, 0
     }
-    |> Seq.fold _folderb gradsW
+    |> Seq.fold (_folder 'b' updateParamsb) gradsW
 
   gradsWb
 
