@@ -2,7 +2,7 @@ open Yann.DemoApp
 
 let callback epoch elapsed cost accuracy =
   if epoch % 100 = 0 then
-    printfn "[%O] Epoch=%d Cost=%f Accuracy=%f" elapsed epoch cost accuracy
+    printfn "[%O] Epoch=%04d Cost=%2.8f Accuracy=%2.2f" elapsed epoch cost accuracy
   else
     ()
 

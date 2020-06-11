@@ -64,7 +64,8 @@ type Architecture =
 
 type HyperParameters =
   { Epochs : int
-    α: double }
+    α: double
+    λ: double }
 
 [<DebuggerDisplay("W = {W.ShapeString()}, b = {b.ShapeString()}")>]
 type Parameter = { W: Matrix<double>; b: Vector<double> }
@@ -118,32 +119,37 @@ let _forwardPropagate arch (parameters: Parameters) (X: Matrix<double>): (Matrix
   |> List.mapi (fun i l -> (i + 1), l)
   |> List.fold _folder (X, Map.empty)
 
-let _computeCost (Y: Matrix<double>) (Ŷ: Matrix<double>): double =
-  let cost = Y.Multiply(Ŷ.PointwiseLog().Transpose()) + (Y.Negate().Add(1.0).Multiply(Ŷ.Negate().Add(1.0).PointwiseLog().Transpose()))
-  assert ((cost.RowCount, cost.ColumnCount) = (1, 1))
+let _computeCost (λ: double) (Y: Matrix<double>) (Ŷ: Matrix<double>) (parameters: Parameters): double =
+  let cost' =
+    Y.Multiply(Ŷ.PointwiseLog().Transpose()) +
+    Y.Negate().Add(1.0).Multiply(Ŷ.Negate().Add(1.0).PointwiseLog().Transpose())
+  assert ((cost'.RowCount, cost'.ColumnCount) = (1, 1))
 
   let m = double Y.ColumnCount
-  (-1.0 / m) * cost.Item(0, 0)
+  let cost = (-1. / m) * cost'.Item(0, 0)
+  let l2RegCost = λ / (2. * m) * (parameters |> Seq.fold (fun acc e -> acc + e.Value.W.PointwisePower(2.).ColumnSums().Sum()) 0.)
+
+  cost + l2RegCost
 
 let _computeAccuracy (Y: Matrix<double>) (Ŷ: Matrix<double>) =
   0.0
 
-let _linearBackward (dZ: Matrix<double>) { Aprev = Aprev; W = W } =
+let _linearBackward (λ: double) (dZ: Matrix<double>) { Aprev = Aprev; W = W } =
   let m = Aprev.Shape().[1] |> double
 
-  let dW = (1.0 / m) * dZ.Multiply(Aprev.Transpose())
+  let dW = (1.0 / m) * dZ.Multiply(Aprev.Transpose()) + ((λ / m) * W)
   let db = (1.0 / m) * (dZ.EnumerateColumns() |> Seq.reduce (+))
   let dAprev = W.Transpose().Multiply(dZ)
   
   dAprev, dW, db
 
-let _linearActivationBackward (dA: Matrix<double>) cache activation =
+let _linearActivationBackward λ (dA: Matrix<double>) cache activation =
   let dZ = _activationsBackward.[activation] cache.Z dA
-  _linearBackward dZ cache
+  _linearBackward λ dZ cache
 
-let _backwardPropagate arch (Y: Matrix<double>) (Ŷ: Matrix<double>) (caches: Caches): Gradients =
+let _backwardPropagate arch λ (Y: Matrix<double>) (Ŷ: Matrix<double>) (caches: Caches): Gradients =
   let _folder (acc: Gradients) (l, layer: Layer) =
-    let (dAprev, dW, db) = _linearActivationBackward acc.[l].dA caches.[l] layer.Activation
+    let (dAprev, dW, db) = _linearActivationBackward λ acc.[l].dA caches.[l] layer.Activation
     let gradPrev = { _invalidGradient with dA = dAprev }
     let grad = { acc.[l] with dW = dW; db = db }
     acc |> Map.remove l |> Map.add l grad |> Map.add (l - 1) gradPrev
@@ -170,7 +176,7 @@ let _updateParameters arch (α: double) (parameters: Parameters) (gradients: Gra
   |> List.fold _folder Map.empty
 
 // NOTE: Inspiration from deeplearning.ai & https://stats.stackexchange.com/questions/332089/numerical-gradient-checking-best-practices
-let _calculateNumericalGradients ε arch (parameters: Parameters) (X: Matrix<double>) (Y: Matrix<double>) =
+let _calculateNumericalGradients λ ε arch (parameters: Parameters) (X: Matrix<double>) (Y: Matrix<double>) =
   let updateParamsW (l, r, c) ε =
     // NOTE: This clone will happen r x c times per W. Is there a better way?
     let W' = parameters.[l].W.Clone()
@@ -186,7 +192,7 @@ let _calculateNumericalGradients ε arch (parameters: Parameters) (X: Matrix<dou
   let getCost updateParams index ε =
     let p = updateParams index ε
     let Ŷ, _ = _forwardPropagate arch p X
-    _computeCost Y Ŷ
+    _computeCost λ Y Ŷ parameters
 
   let _folder ptype updateParams acc index =
     let Jpos = getCost updateParams index ε
@@ -218,12 +224,11 @@ let trainNetwork paramsInit (callback: EpochCallback) (arch: Architecture) (X: M
   let _folder parameters epoch =
     timer.Restart()
     let Ŷ, caches = _forwardPropagate arch parameters X
-    let gradients = _backwardPropagate arch Y Ŷ caches
+    let gradients = _backwardPropagate arch hp.λ Y Ŷ caches
     let parameters = _updateParameters arch hp.α parameters gradients
     timer.Stop()
-    let J = _computeCost Y Ŷ
-    let accuracy = _computeAccuracy Y Ŷ
-    callback epoch timer.Elapsed J accuracy
+    let J = _computeCost hp.λ Y Ŷ parameters
+    callback epoch timer.Elapsed J Double.NaN
     parameters
 
   let ps0 = 
@@ -234,15 +239,25 @@ let trainNetwork paramsInit (callback: EpochCallback) (arch: Architecture) (X: M
   seq { for epoch in 0 .. (hp.Epochs - 1) do epoch }
   |> Seq.fold _folder ps0
 
-let calculateDeltaForGradientCheck ε arch (parameters: Parameters) (X: Matrix<double>) (Y: Matrix<double>) =
+let predit arch X parameters = 
+  let Ŷ, _ = _forwardPropagate arch parameters X
+
+  Ŷ.PointwiseRound()
+
+let computeAccuracy arch (X: Matrix<double>) (Y: Matrix<double>) parameters =
+  let Ŷ = predit arch X parameters
+
+  Ŷ.Subtract(Y).ColumnAbsoluteSums().Sum() / (Y.RowCount * Ŷ.ColumnCount |> double)
+
+let calculateDeltaForGradientCheck λ ε arch (parameters: Parameters) (X: Matrix<double>) (Y: Matrix<double>) =
   let grads' =
-    _calculateNumericalGradients ε arch parameters X Y
+    _calculateNumericalGradients λ ε arch parameters X Y
     |> Seq.sortBy (fun kv -> kv.Key)
     |> Seq.map (fun kv -> kv.Value)
     |> Vector<double>.Build.DenseOfEnumerable
 
   let Ŷ, caches = _forwardPropagate arch parameters X
-  let gradients = _backwardPropagate arch Y Ŷ caches |> Map.remove 0
+  let gradients = _backwardPropagate arch λ Y Ŷ caches |> Map.remove 0
 
   let gradsW =
     seq {

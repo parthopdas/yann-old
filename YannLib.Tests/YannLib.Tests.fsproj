@@ -8,7 +8,9 @@
   <ItemGroup>
     <Compile Include="TestHelpers.fs" />
     <Compile Include="PerfTests.fs" />
-    <Compile Include="DNNTests.fs" />
+    <Compile Include="DNNTests.Core.fs" />
+    <Compile Include="DNNTests.GradCheck.fs" />
+    <Compile Include="DNNTests.Regularization.fs" />
   </ItemGroup>
 
   <ItemGroup>

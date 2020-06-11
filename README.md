@@ -10,9 +10,11 @@
 - Written in F#/.NET Core 3 using [Math.NET Numerics on MKL](https://numerics.mathdotnet.com/) 
 - Generic Vectorized L-layer FC DNN Library (with unit tests and demo apps)
 - Hyperparameters: L, α, Epochs
-- Initializations: He
 - Activations: ReLU, Sigmoid
 - Cost Functions: Cross entropy
+- Initializations: He
+- Regularization: L2
+- Optimization: -
 - Basic transfer learning
 - Gradient checking
 

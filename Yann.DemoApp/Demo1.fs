@@ -28,7 +28,8 @@ let run callback =
 
   let hp =
     { Epochs = 2500
-      α = 0.0075 }
+      α = 0.0075
+      λ = 0. }
 
   trainNetwork (Seed 1) callback arch data.["X"] data.["Y"] hp |> ignore
 
