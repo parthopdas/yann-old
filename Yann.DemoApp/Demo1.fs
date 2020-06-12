@@ -14,6 +14,7 @@ open MathNet.Numerics.Data.Matlab
     - https://aimlsutff.blob.core.windows.net/main/deeplearning.ai.C1W4.mat
   
 *)
+
 let run callback =
   let dataFile = [() |> Path.getExecutingAssemblyLocation; "deeplearning.ai.C1W4.mat"] |> Path.combine 
   let data = MatlabReader.ReadAll<double>(dataFile, "X", "Y");
@@ -29,7 +30,7 @@ let run callback =
   let hp =
     { Epochs = 2500
       α = 0.0075
-      λ = 0. }
+      λ = None }
 
   trainNetwork (Seed 1) callback arch data.["X"] data.["Y"] hp |> ignore
 

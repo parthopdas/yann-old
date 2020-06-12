@@ -46,14 +46,6 @@ type Activation =
   | ReLU
   | Sigmoid
 
-let _activationsForward : Map<Activation, Matrix<double> -> Matrix<double>> =
-  [ (ReLU, Activations.ReLU.forward)
-    (Sigmoid, Activations.Sigmoid.forward) ] |> Map.ofList
-
-let _activationsBackward : Map<Activation, Matrix<double> -> Matrix<double> -> Matrix<double>> =
-  [ (ReLU, Activations.ReLU.backward)
-    (Sigmoid, Activations.Sigmoid.backward) ] |> Map.ofList
-
 type Layer =
   { n: int
     Activation: Activation }
@@ -65,7 +57,7 @@ type Architecture =
 type HyperParameters =
   { Epochs : int
     α: double
-    λ: double }
+    λ: double option }
 
 [<DebuggerDisplay("W = {W.ShapeString()}, b = {b.ShapeString()}")>]
 type Parameter = { W: Matrix<double>; b: Vector<double> }
@@ -101,25 +93,33 @@ let _initializeParameters (seed: int) (arch: Architecture): Parameters =
   |> Seq.mapi (fun i (W, b) -> i + 1, { W = W; b = b })
   |> Map.ofSeq
 
+let _activationsForward = function
+  | ReLU -> Activations.ReLU.forward
+  | Sigmoid -> Activations.Sigmoid.forward
+
+let _activationsBackward = function
+  | ReLU -> Activations.ReLU.backward
+  | Sigmoid -> Activations.Sigmoid.backward
+
 let _linearForward (Aprev: Matrix<double>) (W: Matrix<double>) (b: Vector<double>) =
   let Z = W.Multiply(Aprev) + b.BroadcastC(Aprev.ColumnCount)
   { Aprev = Aprev; W = W; b = b; Z = Z }
 
 let _linearActivationForward (Aprev: Matrix<double>) (W: Matrix<double>) (b: Vector<double>) activation =
   let cache = _linearForward Aprev W b
-  let A = _activationsForward.[activation] cache.Z
+  let A = _activationsForward activation cache.Z
   A, cache
 
 let _forwardPropagate arch (parameters: Parameters) (X: Matrix<double>): (Matrix<double> * Caches) =
-  let _folder (APrev: Matrix<double>, acc: Map<int, Cache>) (l, layer: Layer) =
-    let (A, cache) = _linearActivationForward APrev parameters.[l].W parameters.[l].b layer.Activation
+  let _folder (Aprev: Matrix<double>, acc: Map<int, Cache>) (l, layer: Layer) =
+    let (A, cache) = _linearActivationForward Aprev parameters.[l].W parameters.[l].b layer.Activation
     (A, acc |> Map.add l cache)
 
   arch.Layers
   |> List.mapi (fun i l -> (i + 1), l)
   |> List.fold _folder (X, Map.empty)
 
-let _computeCost (λ: double) (Y: Matrix<double>) (Ŷ: Matrix<double>) (parameters: Parameters): double =
+let _computeCost λ (Y: Matrix<double>) (Ŷ: Matrix<double>) (parameters: Parameters): double =
   let cost' =
     Y.Multiply(Ŷ.PointwiseLog().Transpose()) +
     Y.Negate().Add(1.0).Multiply(Ŷ.Negate().Add(1.0).PointwiseLog().Transpose())
@@ -127,24 +127,28 @@ let _computeCost (λ: double) (Y: Matrix<double>) (Ŷ: Matrix<double>) (paramete
 
   let m = double Y.ColumnCount
   let cost = (-1. / m) * cost'.Item(0, 0)
-  let l2RegCost = λ / (2. * m) * (parameters |> Seq.fold (fun acc e -> acc + e.Value.W.PointwisePower(2.).ColumnSums().Sum()) 0.)
+  let l2RegCost =
+    match λ with
+    | Some λ -> λ / (2. * m) * (parameters |> Seq.fold (fun acc e -> acc + e.Value.W.PointwisePower(2.).ColumnSums().Sum()) 0.)
+    | None -> 0.
 
   cost + l2RegCost
 
-let _computeAccuracy (Y: Matrix<double>) (Ŷ: Matrix<double>) =
-  0.0
-
-let _linearBackward (λ: double) (dZ: Matrix<double>) { Aprev = Aprev; W = W } =
+let _linearBackward λ (dZ: Matrix<double>) { Aprev = Aprev; W = W } =
   let m = Aprev.Shape().[1] |> double
 
-  let dW = (1.0 / m) * dZ.Multiply(Aprev.Transpose()) + ((λ / m) * W)
+  let dW = (1.0 / m) * dZ.Multiply(Aprev.Transpose())
+  let dW =
+    match λ with
+    | Some λ -> dW + ((λ / m) * W)
+    | None -> dW
   let db = (1.0 / m) * (dZ.EnumerateColumns() |> Seq.reduce (+))
   let dAprev = W.Transpose().Multiply(dZ)
   
   dAprev, dW, db
 
 let _linearActivationBackward λ (dA: Matrix<double>) cache activation =
-  let dZ = _activationsBackward.[activation] cache.Z dA
+  let dZ = _activationsBackward activation cache.Z dA
   _linearBackward λ dZ cache
 
 let _backwardPropagate arch λ (Y: Matrix<double>) (Ŷ: Matrix<double>) (caches: Caches): Gradients =
@@ -219,6 +223,19 @@ let _calculateNumericalGradients λ ε arch (parameters: Parameters) (X: Matrix<
 
   gradsWb
 
+let initializeHyperParameters () =
+  { Epochs = 0
+    α = 0.01
+    λ = Some 0.7 }
+
+let predict arch X parameters = 
+  let Ŷ, _ = _forwardPropagate arch parameters X
+  Ŷ.PointwiseRound()
+
+let computeAccuracy arch (X: Matrix<double>) (Y: Matrix<double>) parameters =
+  let Ŷ = predict arch X parameters
+  1. - Y.Subtract(Ŷ).ColumnAbsoluteSums().Sum() / (Y.RowCount * Y.ColumnCount |> double)
+
 let trainNetwork paramsInit (callback: EpochCallback) (arch: Architecture) (X: Matrix<double>) (Y: Matrix<double>) (hp: HyperParameters): Parameters =
   let timer = Stopwatch()
   let _folder parameters epoch =
@@ -228,7 +245,8 @@ let trainNetwork paramsInit (callback: EpochCallback) (arch: Architecture) (X: M
     let parameters = _updateParameters arch hp.α parameters gradients
     timer.Stop()
     let J = _computeCost hp.λ Y Ŷ parameters
-    callback epoch timer.Elapsed J Double.NaN
+    let accuracy = computeAccuracy arch X Y parameters
+    callback epoch timer.Elapsed J accuracy
     parameters
 
   let ps0 = 
@@ -238,16 +256,6 @@ let trainNetwork paramsInit (callback: EpochCallback) (arch: Architecture) (X: M
 
   seq { for epoch in 0 .. (hp.Epochs - 1) do epoch }
   |> Seq.fold _folder ps0
-
-let predit arch X parameters = 
-  let Ŷ, _ = _forwardPropagate arch parameters X
-
-  Ŷ.PointwiseRound()
-
-let computeAccuracy arch (X: Matrix<double>) (Y: Matrix<double>) parameters =
-  let Ŷ = predit arch X parameters
-
-  Ŷ.Subtract(Y).ColumnAbsoluteSums().Sum() / (Y.RowCount * Ŷ.ColumnCount |> double)
 
 let calculateDeltaForGradientCheck λ ε arch (parameters: Parameters) (X: Matrix<double>) (Y: Matrix<double>) =
   let grads' =

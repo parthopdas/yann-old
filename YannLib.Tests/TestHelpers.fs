@@ -19,7 +19,7 @@ let shouldBeEquivalentV (a: double array) (v: Vector<double>) =
   v.ToArray().Should().BeEquivalentTo(a, doubleComparisonOptions, String.Empty, Array.empty) |> ignore
 
 let shouldBeApproximately (a1: double) (a2) =
-  a1.Should().BeApproximately(a2, precision, String.Empty, Array.empty)
+  a1.Should().BeApproximately(a2, precision, String.Empty, Array.empty) |> ignore
 
 let toM (rs: double list list) = rs |> array2D |> CreateMatrix.DenseOfArray
 

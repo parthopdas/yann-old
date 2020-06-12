@@ -114,7 +114,7 @@ let ``Check cost function``() =
   let Y = [[1.0; 1.0; 0.0]] |> toM
   let Ŷ = [[0.8; 0.9; 0.4]] |> toM
 
-  let J = _computeCost 0. Y Ŷ Map.empty
+  let J = _computeCost (Some 0.) Y Ŷ Map.empty
 
   J.Should().BeApproximately(0.2797765635793422, precision, System.String.Empty, Array.empty) |> ignore
 
@@ -137,7 +137,7 @@ let ``Check linear part of a layer's backward propagation``() =
   let b =
     [|2.10025514; 0.12015895; 0.61720311|] |> toV
 
-  let (dAprev, dW, db) = _linearBackward 0. dZ { _invalidCache with Aprev = Aprev; W = W; b = b }
+  let (dAprev, dW, db) = _linearBackward (Some 0.) dZ { _invalidCache with Aprev = Aprev; W = W; b = b }
 
   let dAprevExpected =
     [[-1.15171336;  0.06718465; -0.3204696;   2.09812712]
@@ -171,7 +171,7 @@ let ``Check linear and activation part of a layer's backward propagation``() =
   let Z =
     [[ 0.04153939; -1.11792545]] |> toM
 
-  let dAprev, dW, db = _linearActivationBackward 0. dA { Aprev = Aprev; W = W; b = b; Z = Z } ReLU
+  let dAprev, dW, db = _linearActivationBackward None dA { Aprev = Aprev; W = W; b = b; Z = Z } ReLU
 
   let dAprevExpected =
     [[ 0.44090989; -0.0 ]
@@ -186,7 +186,7 @@ let ``Check linear and activation part of a layer's backward propagation``() =
   dW |> shouldBeEquivalentM dWExpected
   db |> shouldBeEquivalentV dbExpected
 
-  let dAprev, dW, db = _linearActivationBackward 0. dA { Aprev = Aprev; W = W; b = b; Z = Z } Sigmoid
+  let dAprev, dW, db = _linearActivationBackward None dA { Aprev = Aprev; W = W; b = b; Z = Z } Sigmoid
 
   let dAprevExpected =
     [[ 0.11017994;  0.01105339]
@@ -246,7 +246,7 @@ let ``Check full backward propagation``() =
   let Yassess =
     [[1.0; 0.0]] |> toM
 
-  let grads = _backwardPropagate arch 0. Yassess AL caches
+  let grads = _backwardPropagate arch (Some 0.) Yassess AL caches
 
   let dA0 = 
     [[ 0.0       ;  0.52257901]

@@ -31,3 +31,9 @@
 - [deeplearning.ai: Deep Learning specialization](https://www.deeplearning.ai/) course.
 - [ILearnDeepLearning.py](https://github.com/SkalskiP/ILearnDeepLearning.py/tree/master/01_mysteries_of_neural_networks/03_numpy_neural_net)
 - [UFLDL Tutorial](http://ufldl.stanford.edu/tutorial/).
+
+## TODO
+
+- Initialization: 
+  - Add a scale hyper parameters for He initialization
+  - Implement other ones (e.g. Xavier for Tanh activation)

@@ -43,5 +43,5 @@ let ``Check Gradient check``() =
           { n = 1; Activation = Sigmoid } ] }
 
   let ε = 1e-7
-  let delta = calculateDeltaForGradientCheck 0. ε arch parameters X Y
+  let delta = calculateDeltaForGradientCheck (Some 0.) ε arch parameters X Y
   delta.Should().BeLessThan(1e-7, System.String.Empty, Array.empty) |> ignore

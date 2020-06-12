@@ -5,6 +5,9 @@ open YannLib.DNN
 open FluentAssertions
 open FsUnit.Xunit
 open YannLib.Tests.TestHelpers
+open MathNet.Numerics.Data.Matlab
+open System.Collections.Generic
+open YannLib
 
 [<Fact>]
 let ``Check cost with regularization``() =
@@ -30,7 +33,7 @@ let ``Check cost with regularization``() =
   let Y = [[1.; 1.; 0.; 1.; 0.]] |> toM
   let Ŷ = [[0.40682402;  0.01629284;  0.16722898;  0.10118111;  0.40682402]] |> toM
 
-  let cost = _computeCost 0.1 Y Ŷ parameters
+  let cost = _computeCost (Some 0.1) Y Ŷ parameters
 
   cost |> shouldBeApproximately 1.78648594516
 
@@ -102,7 +105,7 @@ let ``Check backward propagation with regularization``() =
   let db3 = 
     [|-0.38032981|]
 
-  let grads = _backwardPropagate arch 0.7 Y Ŷ caches
+  let grads = _backwardPropagate arch (Some 0.7) Y Ŷ caches
 
   grads.[1].dW |> shouldBeEquivalentM dW1
   grads.[1].db |> shouldBeEquivalentV db1
@@ -110,3 +113,40 @@ let ``Check backward propagation with regularization``() =
   grads.[2].db |> shouldBeEquivalentV db2
   grads.[3].dW |> shouldBeEquivalentM dW3
   grads.[3].db |> shouldBeEquivalentV db3
+
+[<Fact>]
+let ``Check predictions with regularization``() =
+  MathNet.Numerics.Control.UseNativeMKL();
+
+  let dataFile = [() |> Path.getExecutingAssemblyLocation; "data"; "regularization.traindev.mat"] |> Path.combine
+  let data = MatlabReader.ReadAll<double>(dataFile, "X", "y", "Xval", "yval");
+  let train_X = data.["X"].Transpose()
+  let train_Y = data.["y"].Transpose()
+  let test_X = data.["Xval"].Transpose()
+  let test_Y = data.["yval"].Transpose()
+
+  let arch =
+    { nₓ = 2
+      Layers =
+        [ { n = 20; Activation = ReLU }
+          { n = 3; Activation = ReLU }
+          { n = 1; Activation = Sigmoid } ] }
+
+  let hp =
+    { Epochs = 30_000
+      α = 0.3
+      λ = Some 0.7 }
+
+  let costs = Dictionary<int, double>()
+  let callback =
+    fun e _ J _ -> if e % 10000 = 0 then costs.[e] <- J else ()
+
+  let ps0 = DataLoaders.loadParameters 3 "data\\regularization.ps0.mat"
+
+  let parameters = DNN.trainNetwork (Parameters ps0) callback arch train_X train_Y hp
+
+  let trainAccuracy = DNN.computeAccuracy arch train_X train_Y parameters
+  trainAccuracy |> shouldBeApproximately 0.93838862
+
+  let testAccuracy = DNN.computeAccuracy arch test_X test_Y parameters
+  testAccuracy |> shouldBeApproximately 0.92999999
