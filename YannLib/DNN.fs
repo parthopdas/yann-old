@@ -42,6 +42,8 @@ open MathNet.Numerics.LinearAlgebra
 let _invalidMatrix = Matrix<double>.Build.Sparse(1, 1, 0.0)
 let _invalidVector = Vector<double>.Build.Sparse(1, 0.0)
 
+let εDivBy0Gaurd = 1E-12
+
 type Activation =
   | ReLU
   | Sigmoid
@@ -115,23 +117,26 @@ let _adjustAForDropout (A: Matrix<double>) l = function
     A, Some D
   | None -> A, None
 
-let _linearActivationForward pMode (Aprev: Matrix<double>) (W: Matrix<double>) (b: Vector<double>) (l, layer: Layer) =
+let _linearActivationForward getKeepProb (Aprev: Matrix<double>) (W: Matrix<double>) (b: Vector<double>) (l, layer: Layer) =
   let Z = _linearForward Aprev W b
   let A = __activationsForward layer.Activation Z
 
-  let kp = layer.KeepProb |> Option.bind (fun x -> if pMode then None else Some x)
+  let kp = layer.KeepProb |> Option.bind getKeepProb
   let A, D = _adjustAForDropout A l kp
 
   A, { Aprev = Aprev; D = D; W = W; b = b; Z = Z }
 
-let _forwardPropagate pMode arch (parameters: Parameters) (X: Matrix<double>): (Matrix<double> * Caches) =
+let private __forwardPropagate getKeepProb arch (parameters: Parameters) (X: Matrix<double>): (Matrix<double> * Caches) =
   let _folder (Aprev: Matrix<double>, acc: Map<int, Cache>) (l, layer: Layer) =
-    let (A, cache) = _linearActivationForward pMode Aprev parameters.[l].W parameters.[l].b (l, layer)
+    let (A, cache) = _linearActivationForward getKeepProb Aprev parameters.[l].W parameters.[l].b (l, layer)
     (A, acc |> Map.add l cache)
 
-  arch.Layers
-  |> Array.mapi (fun i l -> (i + 1), l)
-  |> Array.fold _folder (X, Map.empty)
+  seq { for l = 1 to arch.Layers.Length do yield l, arch.Layers.[l - 1] }
+  |> Seq.fold _folder (X, Map.empty)
+
+let _forwardPropagatePredict = __forwardPropagate (fun _ -> None)
+
+let _forwardPropagateTrain = __forwardPropagate Some
 
 let private __sumOfSquaresOfW (parameters: Parameters) m λ =
   λ / (2. * m) * (parameters |> Seq.fold (fun acc e -> acc + e.Value.W.PointwisePower(2.).ColumnSums().Sum()) 0.)
@@ -155,7 +160,7 @@ let _computeCost λ (Y: Matrix<double>) (Ŷ: Matrix<double>) (parameters: Parame
 let _adjustdAForDropout (dA: Matrix<double>) = function
   | Some D, Some kp -> dA.PointwiseMultiply(D).Divide(kp)
   | None, None -> dA
-  | _ -> failwithf "kp and D both need to be None or Some"
+  | _ -> failwithf "kp and D both need to be None or Some. This is a bug with the code."
 
 let _linearBackward λ (dZ: Matrix<double>) { Aprev = Aprev; W = W } =
   let m = Aprev.Shape().[1] |> double
@@ -178,7 +183,7 @@ let _backwardPropagate arch λ (Y: Matrix<double>) (Ŷ: Matrix<double>) (caches:
   let _folder (acc: Gradients) (l, layer: Layer) =
     let (dAprev, dW, db) = _linearActivationBackward λ acc.[l].dA caches.[l] layer.Activation
     let dAprev =
-      if l >= 2 then
+      if l > 1 then
         _adjustdAForDropout dAprev (caches.[l - 1].D, arch.Layers.[l - 2].KeepProb)
       else
         dAprev
@@ -187,11 +192,11 @@ let _backwardPropagate arch λ (Y: Matrix<double>) (Ŷ: Matrix<double>) (caches:
     acc |> Map.remove l |> Map.add l grad |> Map.add (l - 1) gradPrev
 
   let L = arch.Layers.Length
-  let dAL = - (Y.PointwiseDivide(Ŷ) - Y.Negate().Add(1.0).PointwiseDivide(Ŷ.Negate().Add(1.0)))
+  let dAL = - (Y.PointwiseDivide(Ŷ.Add(εDivBy0Gaurd)) - Y.Negate().Add(1.0).PointwiseDivide(Ŷ.Negate().Add(1.0 + εDivBy0Gaurd)))
   let dAL = _adjustdAForDropout dAL (caches.[L].D, arch.Layers.[L - 1].KeepProb)
   let g0 = Map.empty |> Map.add L { _invalidGradient with dA = dAL }
 
-  seq { for i = arch.Layers.Length downto 1 do yield i, arch.Layers.[i - 1] }
+  seq { for l = arch.Layers.Length downto 1 do yield l, arch.Layers.[l - 1] }
   |> Seq.fold _folder g0
 
 let _updateParameters arch (α: double) (parameters: Parameters) (gradients: Gradients): Parameters =
@@ -200,9 +205,8 @@ let _updateParameters arch (α: double) (parameters: Parameters) (gradients: Gra
     let b = parameters.[l].b - α * gradients.[l].db
     acc |> Map.add l { W = W; b = b }
 
-  arch.Layers
-  |> Array.mapi (fun i _ -> i + 1)
-  |> Array.fold _folder Map.empty
+  seq { for l = 1 to arch.Layers.Length do yield l }
+  |> Seq.fold _folder Map.empty
 
 // NOTE: Inspiration from deeplearning.ai & https://stats.stackexchange.com/questions/332089/numerical-gradient-checking-best-practices
 let _calculateNumericalGradients λ ε arch (parameters: Parameters) (X: Matrix<double>) (Y: Matrix<double>) =
@@ -220,7 +224,7 @@ let _calculateNumericalGradients λ ε arch (parameters: Parameters) (X: Matrix<
 
   let getCost updateParams index ε =
     let p = updateParams index ε
-    let Ŷ, _ = _forwardPropagate false arch p X
+    let Ŷ, _ = _forwardPropagateTrain arch p X
     _computeCost λ Y Ŷ parameters
 
   let _folder ptype updateParams acc index =
@@ -254,7 +258,7 @@ let initializeHyperParameters () =
     λ = Some 0.7 }
 
 let predict arch X parameters = 
-  let Ŷ, _ = _forwardPropagate true arch parameters X
+  let Ŷ, _ = _forwardPropagatePredict arch parameters X
   Ŷ.PointwiseRound()
 
 let computeAccuracy arch (X: Matrix<double>) (Y: Matrix<double>) parameters =
@@ -265,7 +269,7 @@ let trainNetwork paramsInit (callback: EpochCallback) (arch: Architecture) (X: M
   let timer = Stopwatch()
   let _folder parameters epoch =
     timer.Restart()
-    let Ŷ, caches = _forwardPropagate false arch parameters X
+    let Ŷ, caches = _forwardPropagateTrain arch parameters X
     let gradients = _backwardPropagate arch hp.λ Y Ŷ caches
     let parameters = _updateParameters arch hp.α parameters gradients
     timer.Stop()
@@ -289,7 +293,7 @@ let calculateDeltaForGradientCheck λ ε arch (parameters: Parameters) (X: Matri
     |> Seq.map (fun kv -> kv.Value)
     |> Vector<double>.Build.DenseOfEnumerable
 
-  let Ŷ, caches = _forwardPropagate false arch parameters X
+  let Ŷ, caches = _forwardPropagateTrain arch parameters X
   let gradients = _backwardPropagate arch λ Y Ŷ caches |> Map.remove 0
 
   let gradsW =

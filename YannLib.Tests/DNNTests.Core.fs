@@ -61,10 +61,10 @@ let ``Check linear and activation part of a layer's forward propagation``() =
   let b =
     [|-0.90900761|] |> toV
 
-  let (A, _) = _linearActivationForward false Aprev W b (0, { n = 0; Activation = ReLU; KeepProb = None })
+  let (A, _) = _linearActivationForward Some Aprev W b (0, { n = 0; Activation = ReLU; KeepProb = None })
   A |> shouldBeEquivalentM [[ 3.43896131; 0.0 ]]
 
-  let (A, _) = _linearActivationForward false Aprev W b (0, { n = 0; Activation = Sigmoid; KeepProb = None })
+  let (A, _) = _linearActivationForward Some Aprev W b (0, { n = 0; Activation = Sigmoid; KeepProb = None })
   A |> shouldBeEquivalentM [[ 0.96890023; 0.11013289 ]]
 
 [<Fact>]
@@ -103,7 +103,7 @@ let ``Check full forward propagation``() =
            { n = 1; Activation = Sigmoid; KeepProb = None } |] }
   let parameters = Map.ofList [(1, { W = W1; b = b1 }); (2, { W = W2; b = b2 }); (3, { W = W3; b = b3 })]
 
-  let AL, caches = _forwardPropagate false arch parameters X
+  let AL, caches = _forwardPropagateTrain arch parameters X
   
   caches.Count |> should equal 3
   let expected = [[ 0.03921668; 0.70498921; 0.19734387; 0.04728177]]

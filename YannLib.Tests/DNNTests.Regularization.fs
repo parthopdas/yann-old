@@ -182,7 +182,7 @@ let ``Check forward propagation with dropout``() =
 
   let parameters = Map.ofList [(1, { W = W1; b = b1 }); (2, { W = W2; b = b2 }); (3, { W = W3; b = b3 })]
 
-  let AL, _ = _forwardPropagate false arch parameters X_assess
+  let AL, _ = _forwardPropagateTrain arch parameters X_assess
 
   AL |> shouldBeEquivalentM [[0.49683389; 0.05332326; 0.04565099; 0.49683389; 0.36974721]]
 
@@ -280,7 +280,7 @@ let ``Check predictions with dropout``() =
            { n = 1; Activation = Sigmoid; KeepProb = None } |] }
 
   let hp =
-    { Epochs = 1
+    { Epochs = 3_000
       α = 0.3
       λ = None }
 
@@ -293,8 +293,8 @@ let ``Check predictions with dropout``() =
   let parameters = DNN.trainNetwork (Parameters ps0) callback arch train_X train_Y hp
 
   let trainAccuracy = DNN.computeAccuracy arch train_X train_Y parameters
-  trainAccuracy |> shouldBeApproximately 0.6540284
+  trainAccuracy |> shouldBeApproximately 0.92417061
 
   let testAccuracy = DNN.computeAccuracy arch test_X test_Y parameters
-  testAccuracy |> shouldBeApproximately 0.675
+  testAccuracy |> shouldBeApproximately 0.92999999
 
