@@ -8,13 +8,12 @@
 ## Features
 
 - Written in F#/.NET Core 3 using [Math.NET Numerics on MKL](https://numerics.mathdotnet.com/) 
-- Generic Vectorized L-layer FC DNN Library (with unit tests and demo apps)
-- Hyperparameters: L, α, Epochs
+- Generic Vectorized FC DNN Library (with unit tests and demo apps)
 - Activations: ReLU, Sigmoid
 - Cost Functions: Cross entropy
 - Initializations: He
-- Regularization: L2
-- Optimization: -
+- Regularization: L2, Dropout
+- Optimization: Mini
 - Basic transfer learning
 - Gradient checking
 
@@ -34,6 +33,8 @@
 
 ## TODO
 
-- Initialization: 
+- Demo Apps
+  - Sign Language MNIST, MNIST Handwritten Digit Classification
+- Initialization:
   - Add a scale hyper parameters for He initialization
   - Implement other ones (e.g. Xavier for Tanh activation)

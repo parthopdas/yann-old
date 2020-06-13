@@ -24,10 +24,10 @@ let run callback =
   let arch =
     { nₓ = 12288
       Layers =
-        [ { n = 20; Activation = ReLU }
-          { n = 7; Activation = ReLU }
-          { n = 5; Activation = ReLU }
-          { n = 1; Activation = Sigmoid } ] }
+        [| { n = 20; Activation = ReLU; KeepProb = None }
+           { n = 7; Activation = ReLU; KeepProb = None }
+           { n = 5; Activation = ReLU; KeepProb = None }
+           { n = 1; Activation = Sigmoid; KeepProb = None } |] }
 
   let hp =
     { Epochs = 2500

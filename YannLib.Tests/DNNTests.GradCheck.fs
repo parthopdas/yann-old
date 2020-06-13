@@ -38,9 +38,9 @@ let ``Check Gradient check``() =
   let arch =
     { nₓ = 4
       Layers =
-        [ { n = 5; Activation = ReLU }
-          { n = 3; Activation = ReLU }
-          { n = 1; Activation = Sigmoid } ] }
+        [| { n = 5; Activation = ReLU; KeepProb = None }
+           { n = 3; Activation = ReLU; KeepProb = None }
+           { n = 1; Activation = Sigmoid; KeepProb = None } |] }
 
   let ε = 1e-7
   let delta = calculateDeltaForGradientCheck (Some 0.) ε arch parameters X Y

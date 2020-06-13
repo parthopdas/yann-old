@@ -9,15 +9,16 @@ open System.Diagnostics
 let ``Check MLK install``() =
   MathNet.Numerics.Control.UseNativeMKL();
   let m1 = DenseMatrix.create 1000 1000 1.0
-
   let sw = Stopwatch()
-  let mutable totalMS = 0L
-  let count = 100
 
-  for _ in 1 .. count do
+  let _folder (ttlMs, m: Matrix<double>) _ =
     sw.Start()
-    let _ = m1.Multiply(m1)
+    let m = m.Multiply(m)
     sw.Stop()
-    totalMS <- totalMS + sw.ElapsedMilliseconds
+    ttlMs + sw.ElapsedMilliseconds, m
+    
+  let totalMS, _ =
+    seq { 1 .. 100 }
+    |> Seq.fold _folder (0L, m1)
 
-  totalMS |> should be (lessThan 110000L)
+  totalMS |> should be (lessThan 120000L)

@@ -11,8 +11,8 @@ let ``Check network initialization``() =
   let arch =
     { nₓ = 2
       Layers =
-        [ { n = 3; Activation = ReLU }
-          { n = 1; Activation = Sigmoid } ] }
+        [| { n = 3; Activation = ReLU; KeepProb = None }
+           { n = 1; Activation = Sigmoid; KeepProb = None } |] }
 
   let parameters = arch |> _initializeParameters 1
 
@@ -47,8 +47,8 @@ let ``Check linear part of a layer's forward propagation``() =
   let b =
     [|-0.24937038|] |> toV
 
-  let cache = _linearForward A W b
-  cache.Z |> shouldBeEquivalentM [[ 3.26295337; -1.23429987]]
+  let Z = _linearForward A W b
+  Z |> shouldBeEquivalentM [[ 3.26295337; -1.23429987]]
 
 [<Fact>]
 let ``Check linear and activation part of a layer's forward propagation``() =
@@ -61,10 +61,10 @@ let ``Check linear and activation part of a layer's forward propagation``() =
   let b =
     [|-0.90900761|] |> toV
 
-  let (A, _) = _linearActivationForward Aprev W b ReLU
+  let (A, _) = _linearActivationForward false Aprev W b (0, { n = 0; Activation = ReLU; KeepProb = None })
   A |> shouldBeEquivalentM [[ 3.43896131; 0.0 ]]
 
-  let (A, _) = _linearActivationForward Aprev W b Sigmoid
+  let (A, _) = _linearActivationForward false Aprev W b (0, { n = 0; Activation = Sigmoid; KeepProb = None })
   A |> shouldBeEquivalentM [[ 0.96890023; 0.11013289 ]]
 
 [<Fact>]
@@ -98,12 +98,12 @@ let ``Check full forward propagation``() =
   let arch =
     { nₓ = 5
       Layers =
-        [ { n = 4; Activation = ReLU }
-          { n = 3; Activation = ReLU }
-          { n = 1; Activation = Sigmoid } ] }
+        [| { n = 4; Activation = ReLU; KeepProb = None }
+           { n = 3; Activation = ReLU; KeepProb = None }
+           { n = 1; Activation = Sigmoid; KeepProb = None } |] }
   let parameters = Map.ofList [(1, { W = W1; b = b1 }); (2, { W = W2; b = b2 }); (3, { W = W3; b = b3 })]
 
-  let AL, caches = _forwardPropagate arch parameters X
+  let AL, caches = _forwardPropagate false arch parameters X
   
   caches.Count |> should equal 3
   let expected = [[ 0.03921668; 0.70498921; 0.19734387; 0.04728177]]
@@ -137,7 +137,7 @@ let ``Check linear part of a layer's backward propagation``() =
   let b =
     [|2.10025514; 0.12015895; 0.61720311|] |> toV
 
-  let (dAprev, dW, db) = _linearBackward (Some 0.) dZ { _invalidCache with Aprev = Aprev; W = W; b = b }
+  let dAprev, dW, db = _linearBackward (Some 0.) dZ { _invalidCache with Aprev = Aprev; W = W; b = b }
 
   let dAprevExpected =
     [[-1.15171336;  0.06718465; -0.3204696;   2.09812712]
@@ -171,7 +171,7 @@ let ``Check linear and activation part of a layer's backward propagation``() =
   let Z =
     [[ 0.04153939; -1.11792545]] |> toM
 
-  let dAprev, dW, db = _linearActivationBackward None dA { Aprev = Aprev; W = W; b = b; Z = Z } ReLU
+  let dAprev, dW, db = _linearActivationBackward None dA { Aprev = Aprev; D = None; W = W; b = b; Z = Z } ReLU
 
   let dAprevExpected =
     [[ 0.44090989; -0.0 ]
@@ -186,7 +186,7 @@ let ``Check linear and activation part of a layer's backward propagation``() =
   dW |> shouldBeEquivalentM dWExpected
   db |> shouldBeEquivalentV dbExpected
 
-  let dAprev, dW, db = _linearActivationBackward None dA { Aprev = Aprev; W = W; b = b; Z = Z } Sigmoid
+  let dAprev, dW, db = _linearActivationBackward None dA { Aprev = Aprev; D = None; W = W; b = b; Z = Z } Sigmoid
 
   let dAprevExpected =
     [[ 0.11017994;  0.01105339]
@@ -206,8 +206,8 @@ let ``Check full backward propagation``() =
   let arch =
     { nₓ = 4
       Layers =
-        [ { n = 3; Activation = ReLU }
-          { n = 1; Activation = Sigmoid } ] }
+        [| { n = 3; Activation = ReLU; KeepProb = None }
+           { n = 1; Activation = Sigmoid; KeepProb = None } |] }
 
   let A0 =
     [[ 0.09649747; -1.8634927 ]
@@ -238,8 +238,8 @@ let ``Check full backward propagation``() =
 
   let caches =
     [(0, _invalidCache)
-     (1, { Aprev = A0; W = W1; b = b1; Z = Z1 })
-     (2, { Aprev = A1; W = W2; b = b2; Z = Z2 })] |> Map.ofList
+     (1, { Aprev = A0; D = None; W = W1; b = b1; Z = Z1 })
+     (2, { Aprev = A1; D = None; W = W2; b = b2; Z = Z2 })] |> Map.ofList
 
   let AL =
     [[1.78862847; 0.43650985]] |> toM
@@ -280,8 +280,8 @@ let ``Check update parameters``() =
   let arch =
     { nₓ = 2
       Layers =
-        [ { n = 3; Activation = ReLU }
-          { n = 1; Activation = Sigmoid } ] }
+        [| { n = 3; Activation = ReLU; KeepProb = None }
+           { n = 1; Activation = Sigmoid; KeepProb = None } |] }
   let W1 = 
     [[-0.41675785; -0.05626683; -2.1361961 ;  1.64027081]
      [-1.79343559; -0.84174737;  0.50288142; -1.24528809]

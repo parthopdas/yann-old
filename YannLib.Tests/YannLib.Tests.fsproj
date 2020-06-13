@@ -14,6 +14,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="data\ds.mat">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="data\regularization.ps0.mat">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

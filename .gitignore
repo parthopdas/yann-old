@@ -151,6 +151,9 @@ coverage*[.json, .xml, .info]
 *.coverage
 *.coveragexml
 
+# JetBrains Rider
+.idea/
+
 # NCrunch
 _NCrunch_*
 .*crunch*.local.xml
