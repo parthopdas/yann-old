@@ -22,15 +22,15 @@ let run callback =
   let arch =
     { nₓ = 12288
       Layers =
-        [| { n = 20; Activation = ReLU; KeepProb = None }
-           { n = 7; Activation = ReLU; KeepProb = None }
-           { n = 5; Activation = ReLU; KeepProb = None }
+        [| { n = 20; Activation = ReLU; KeepProb = Some 0.9 }
+           { n = 7; Activation = ReLU; KeepProb = Some 1. }
+           { n = 5; Activation = ReLU; KeepProb = Some 1. }
            { n = 1; Activation = Sigmoid; KeepProb = None } |] }
 
   let hp =
     { Epochs = 2500
       α = 0.0075
-      λ = None }
+      λ = Some 0.1 }
 
   trainNetwork (Seed 1) callback arch data.["X"] data.["Y"] hp |> ignore
 
