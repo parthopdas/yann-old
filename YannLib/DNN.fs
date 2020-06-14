@@ -143,8 +143,8 @@ let private __sumOfSquaresOfW (parameters: Parameters) m λ =
 
 let _computeCost λ (Y: Matrix<double>) (Ŷ: Matrix<double>) (parameters: Parameters): double =
   let cost' =
-    Y.Multiply(Ŷ.PointwiseLog().Transpose()) +
-    Y.Negate().Add(1.0).Multiply(Ŷ.Negate().Add(1.0).PointwiseLog().Transpose())
+    Y.TransposeAndMultiply(Ŷ.PointwiseLog()) +
+    Y.Negate().Add(1.0).TransposeAndMultiply(Ŷ.Negate().Add(1.0).PointwiseLog())
   assert ((cost'.RowCount, cost'.ColumnCount) = (1, 1))
 
   let m = double Y.ColumnCount
@@ -165,13 +165,13 @@ let _adjustdAForDropout (dA: Matrix<double>) = function
 let _linearBackward λ (dZ: Matrix<double>) { Aprev = Aprev; W = W } =
   let m = Aprev.Shape().[1] |> double
 
-  let dW = (1.0 / m) * dZ.Multiply(Aprev.Transpose())
+  let dW = (1.0 / m) * dZ.TransposeAndMultiply(Aprev)
   let dW =
     match λ with
     | Some λ -> dW + ((λ / m) * W)
     | None -> dW
   let db = (1.0 / m) * (dZ.EnumerateColumns() |> Seq.reduce (+))
-  let dAprev = W.Transpose().Multiply(dZ)
+  let dAprev = W.TransposeThisAndMultiply(dZ)
 
   dAprev, dW, db
 

@@ -17,7 +17,7 @@
 - Basic transfer learning
 - Gradient checking
 
-> Without any performance tuning, it is currently ~33% slower than the numpy implementation for Cats vs non-Cats Week 4 example on ThinkPad X1 Extreme]
+> Without much deliberate perf tuning, it is just as fast as the numpy implementation for Cats vs non-Cats Week 4 example on ThinkPad X1 Extreme]
 
 ## Primary DNN Workflow
 
