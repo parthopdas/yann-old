@@ -30,7 +30,9 @@ let run callback =
   let hp =
     { Epochs = 2500
       α = 0.0075
-      λ = Some 0.1 }
+      HeScale = 1.
+      λ = Some 0.1
+      BatchSize = BatchSizeAll }
 
   trainNetwork (Seed 1) callback arch data.["X"] data.["Y"] hp |> ignore
 

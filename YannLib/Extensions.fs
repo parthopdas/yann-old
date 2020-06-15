@@ -5,7 +5,7 @@ open System.Runtime.CompilerServices
 open System.Linq
 
 [<Extension>]
-type MathNetExtensions() =
+type MathNetExtensions =
   [<Extension>]
   static member inline Shape(m: Matrix<double>) = [|m.RowCount; m.ColumnCount|]
   [<Extension>]

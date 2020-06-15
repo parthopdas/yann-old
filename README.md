@@ -13,7 +13,7 @@
 - Cost Functions: Cross entropy
 - Initializations: He
 - Regularization: L2, Dropout
-- Optimization: Mini
+- Optimization: Mini-batch GD
 - Basic transfer learning
 - Gradient checking
 

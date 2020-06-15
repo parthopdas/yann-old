@@ -10,10 +10,14 @@
     <Compile Include="DNNTests.Core.fs" />
     <Compile Include="DNNTests.GradCheck.fs" />
     <Compile Include="DNNTests.Regularization.fs" />
+    <Compile Include="DNNTests.Optimization.fs" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="data\ds.mat">
+    <None Include="data\optimization.moons.mat">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="data\params.mat">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="data\regularization.ps0.mat">

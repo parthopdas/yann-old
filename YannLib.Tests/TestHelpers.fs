@@ -15,6 +15,9 @@ let doubleComparisonOptions<'TExpectation> (o: EquivalencyAssertionOptions<'TExp
 let shouldBeEquivalentM (a: double list list) (m: Matrix<double>) =
   m.ToArray().Should().BeEquivalentTo(array2D a, doubleComparisonOptions, String.Empty, Array.empty) |> ignore
 
+let shouldBeEquivalentM2 (a: double [,]) (m: Matrix<double>) =
+  m.ToArray().Should().BeEquivalentTo(a, doubleComparisonOptions, String.Empty, Array.empty) |> ignore
+
 let shouldBeEquivalentV (a: double array) (v: Vector<double>) =
   v.ToArray().Should().BeEquivalentTo(a, doubleComparisonOptions, String.Empty, Array.empty) |> ignore
 

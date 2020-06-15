@@ -14,7 +14,7 @@ let ``Check network initialization``() =
         [| { n = 3; Activation = ReLU; KeepProb = None }
            { n = 1; Activation = Sigmoid; KeepProb = None } |] }
 
-  let parameters = arch |> _initializeParameters 1
+  let parameters = arch |> _initializeParameters 1. 1
 
   parameters |> Map.toList |> List.map fst |> should equal [1; 2]
 

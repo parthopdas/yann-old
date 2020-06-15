@@ -32,7 +32,9 @@ let run callback =
   let hp =
     { Epochs = 2500
       α = 0.0075
-      λ = None }
+      HeScale = 1.
+      λ = None
+      BatchSize = BatchSizeAll }
 
   let ps0 = DataLoaders.loadParameters 4 "parameters.mat"
   let parameters = trainNetwork (Parameters ps0) callback arch data.["X"] data.["Y"] hp

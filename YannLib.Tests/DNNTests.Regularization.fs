@@ -136,7 +136,9 @@ let ``Check predictions with regularization``() =
   let hp =
     { Epochs = 3_000
       α = 0.3
-      λ = Some 0.7 }
+      HeScale = 1.
+      λ = Some 0.7
+      BatchSize = BatchSizeAll }
 
   let costs = Dictionary<int, double>()
   let callback =
@@ -282,7 +284,9 @@ let ``Check predictions with dropout``() =
   let hp =
     { Epochs = 3_000
       α = 0.3
-      λ = None }
+      HeScale = 1.
+      λ = None
+      BatchSize = BatchSizeAll }
 
   let costs = Dictionary<int, double>()
   let callback =
@@ -293,8 +297,8 @@ let ``Check predictions with dropout``() =
   let parameters = DNN.trainNetwork (Parameters ps0) callback arch train_X train_Y hp
 
   let trainAccuracy = DNN.computeAccuracy arch train_X train_Y parameters
-  trainAccuracy |> shouldBeApproximately 0.92417061
+  trainAccuracy |> shouldBeApproximately 0.93364928
 
   let testAccuracy = DNN.computeAccuracy arch test_X test_Y parameters
-  testAccuracy |> shouldBeApproximately 0.92999999
+  testAccuracy |> shouldBeApproximately 0.925
 
