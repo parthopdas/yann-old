@@ -4,7 +4,6 @@ open System
 open System.Diagnostics
 open MathNet.Numerics.Distributions
 open MathNet.Numerics.LinearAlgebra
-open MathNet.Numerics.Data.Matlab
 open MathNet.Numerics
 
 (*
@@ -85,6 +84,10 @@ type HyperParameters =
 type Parameter = { W: Matrix<double>; b: Vector<double> }
 type Parameters = Map<int, Parameter>
 
+type Vs = Map<int, Parameter>
+
+type Ss = Map<int, Parameter>
+
 type ParameterInitialization = 
   | Parameters of Parameters
   | Seed of int
@@ -114,6 +117,51 @@ let _initializeParameters heScale (seed: int) (arch: Architecture): Parameters =
   Seq.zip ws bs
   |> Seq.mapi (fun i (W, b) -> i + 1, { W = W; b = b })
   |> Map.ofSeq
+
+let _initializeVs (arch: Architecture): Vs =
+  let ws =
+    seq { yield arch.nₓ; yield! arch.Layers |> Seq.map (fun l -> l.n) }
+    |> Seq.pairwise
+    |> Seq.map (fun (nPrev, n) -> Matrix<double>.Build.Dense(n, nPrev, 0.))
+
+  let bs =
+    arch.Layers
+    |> Seq.map (fun l -> Vector<double>.Build.Dense(l.n, 0.))
+
+  Seq.zip ws bs
+  |> Seq.mapi (fun i (W, b) -> i + 1, { W = W; b = b })
+  |> Map.ofSeq
+
+let _initializeSs (arch: Architecture): Vs * Ss =
+  let wsv =
+    seq { yield arch.nₓ; yield! arch.Layers |> Seq.map (fun l -> l.n) }
+    |> Seq.pairwise
+    |> Seq.map (fun (nPrev, n) -> Matrix<double>.Build.Dense(n, nPrev, 0.))
+
+  let bsv =
+    arch.Layers
+    |> Seq.map (fun l -> Vector<double>.Build.Dense(l.n, 0.))
+
+  let v =
+    Seq.zip wsv bsv
+    |> Seq.mapi (fun i (W, b) -> i + 1, { W = W; b = b })
+    |> Map.ofSeq
+
+  let wss =
+    seq { yield arch.nₓ; yield! arch.Layers |> Seq.map (fun l -> l.n) }
+    |> Seq.pairwise
+    |> Seq.map (fun (nPrev, n) -> Matrix<double>.Build.Dense(n, nPrev, 0.))
+
+  let bss =
+    arch.Layers
+    |> Seq.map (fun l -> Vector<double>.Build.Dense(l.n, 0.))
+
+  let s = 
+    Seq.zip wss bss
+    |> Seq.mapi (fun i (W, b) -> i + 1, { W = W; b = b })
+    |> Map.ofSeq
+
+  v, s
 
 let private __activationsForward = function
   | ReLU -> Activations.ReLU.forward
@@ -163,8 +211,7 @@ let private __sumOfSquaresOfW (parameters: Parameters) m λ =
 let _computeCost λ (Y: Matrix<double>) (Ŷ: Matrix<double>) (parameters: Parameters): double =
   let cost' =
     Y.TransposeAndMultiply(Ŷ.PointwiseLog()) +
-    // TODO: Optimize this...
-    Y.Negate().Add(1.0).TransposeAndMultiply(Ŷ.Negate().Add(1.0).PointwiseLog())
+    (1. - Y).TransposeAndMultiply((1. - Ŷ).PointwiseLog())
   assert ((cost'.RowCount, cost'.ColumnCount) = (1, 1))
 
   let m = double Y.ColumnCount
@@ -227,6 +274,40 @@ let _updateParameters arch (α: double) (parameters: Parameters) (gradients: Gra
 
   seq { for l = 1 to arch.Layers.Length do yield l }
   |> Seq.fold _folder Map.empty
+
+let _updateParametersMomentum arch (α: double) (β: double) (gradients: Gradients) (v: Vs) (parameters: Parameters) : Parameters * Vs =
+  let _folder (accp, accv) l =
+    let dWv = v.[l].W.Multiply(β) + gradients.[l].dW.Multiply(1. - β)
+    let dbv = v.[l].b.Multiply(β) + gradients.[l].db.Multiply(1. - β)
+
+    // TODO: Change W, b in Vs to dW and db
+    let W = parameters.[l].W - α * dWv
+    let b = parameters.[l].b - α * dbv
+    (accp |> Map.add l { W = W; b = b }), (accv |> Map.add l { W = dWv; b = dbv })
+
+  seq { for l = 1 to arch.Layers.Length do yield l }
+  |> Seq.fold _folder (Map.empty, Map.empty)
+
+// TODO: Change W, b in Vs to dW and db
+// TODO: Change W, b in Ss to dW and db
+let _updateParametersADAM arch (α: double) (β1: double) (β2: double) (ε: double) (t: double) (gradients: Gradients) (v: Vs) (s: Ss) (parameters: Parameters) : Parameters * Vs * Ss =
+  let _folder (accp, accv, accs) l =
+    let dWv = v.[l].W.Multiply(β1) + gradients.[l].dW.Multiply(1. - β1)
+    let dbv = v.[l].b.Multiply(β1) + gradients.[l].db.Multiply(1. - β1)
+    let dWv_corrected = dWv / (1. - β1 ** t)
+    let dbv_corrected = dbv / (1. - β1 ** t)
+
+    let dWs = β2 * s.[l].W + (1. - β2) * gradients.[l].dW.PointwisePower(2.)
+    let dbs = β2 * s.[l].b + (1. - β2) * gradients.[l].db.PointwisePower(2.)
+    let dWs_corrected = dWs / (1. - β2 ** t)
+    let dbs_corrected = dbs / (1. - β2 ** t)
+
+    let W = parameters.[l].W - α * dWv_corrected.PointwiseDivide(dWs_corrected.PointwisePower(0.5) + ε)
+    let b = parameters.[l].b - α * dbv_corrected.PointwiseDivide(dbs_corrected.PointwisePower(0.5) + ε)
+    (accp |> Map.add l { W = W; b = b }), (accv |> Map.add l { W = dWv; b = dbv }), (accs |> Map.add l { W = dWs; b = dbs })
+
+  seq { for l = 1 to arch.Layers.Length do yield l }
+  |> Seq.fold _folder (Map.empty, Map.empty, Map.empty)
 
 // NOTE: Inspiration from deeplearning.ai & https://stats.stackexchange.com/questions/332089/numerical-gradient-checking-best-practices
 let _calculateNumericalGradients λ ε arch (parameters: Parameters) (X: Matrix<double>) (Y: Matrix<double>) =
@@ -319,6 +400,7 @@ let shuffleDataSet_ seed (X: Matrix<double>, Y: Matrix<double>)  =
       i <- i + 1
       parray.[i - 1]
     else
+      // TODO: add epoch # to seed
       Combinatorics.GeneratePermutation(X.ColumnCount, Random(seed))
 
   let permutation = Permutation(inversion).Inverse()
@@ -335,6 +417,7 @@ let private __trainNetworkFor1MiniBatch arch hp (J: double, parameters: Paramete
   let J = J + (double m) * (_computeCost hp.λ Y Ŷ parameters)
   J, parameters, timer
 
+// TODO: pass seed separately and pass it on to shuffle
 let trainNetwork paramsInit (callback: EpochCallback) (arch: Architecture) (X: Matrix<double>) (Y: Matrix<double>) (hp: HyperParameters): Parameters =
   assert (X.ColumnCount = Y.ColumnCount)
   let m = X.ColumnCount
@@ -345,6 +428,7 @@ let trainNetwork paramsInit (callback: EpochCallback) (arch: Architecture) (X: M
     timer.Restart()
     // NOTE: Should we move it out of there?
     // TODO: Ask on various forums what is the best practice if dataset is large
+    // TODO: Do this at the start of trainNetwork
     let X = X.Clone()
     let Y = Y.Clone()
     shuffleDataSet_ 0 (X, Y)
