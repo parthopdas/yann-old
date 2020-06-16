@@ -13,7 +13,7 @@
 - Cost Functions: Cross entropy
 - Initializations: He
 - Regularization: L2, Dropout
-- Optimization: Mini-batch GD
+- Optimization: MBGD, Momentum, ADAM
 - Basic transfer learning
 - Gradient checking
 

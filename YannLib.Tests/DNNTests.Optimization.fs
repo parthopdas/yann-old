@@ -9,8 +9,7 @@ open System.Collections.Generic
 open MathNet.Numerics.LinearAlgebra
 open FsUnit.Xunit
 
-[<Fact>]
-let ``Check cost with MBGD``() =
+let getTestData opt = 
   let dataFile = [() |> Path.getExecutingAssemblyLocation; "data"; "optimization.moons.mat"] |> Path.combine
   let data = MatlabReader.ReadAll<double>(dataFile, "X", "Y")
   let X, Y = data.["X"], data.["Y"]
@@ -27,22 +26,26 @@ let ``Check cost with MBGD``() =
       α = 0.0007
       HeScale = 1.
       λ = None
-      Optimization = NoOptimization
+      Optimization = opt
       BatchSize = BatchSize64 }
+
+  X, Y, arch, hp
+
+[<Fact>]
+let ``Check cost with MBGD``() =
+  let X, Y, arch, hp = getTestData NoOptimization
 
   let cmap = Dictionary<int, double>()
   let callback =
     fun e _ J _ -> if e % 1 = 0 then cmap.[e] <- J else ()
 
-  let p0 = DataLoaders.loadParameters 3 "data\\params.mat"
-  let parameters = DNN.trainNetwork (DNN.Parameters p0) callback arch hp X Y
+  let parameters = DNN.trainNetwork 1 None callback arch hp X Y
 
   let costs = cmap |> Seq.sortBy (fun kv -> kv.Key) |> Seq.map (fun kv -> kv.Value) |> Vector<double>.Build.DenseOfEnumerable
-  costs |> shouldBeEquivalentV [| 0.702405; 0.702364; 0.702320; 0.702280; 0.702234 |]
+  costs |> shouldBeEquivalentV [| 0.65659521; 0.65648103; 0.65637155; 0.65625827; 0.65614572 |]
 
   let accuracy = DNN.computeAccuracy arch X Y parameters
-  //accuracy |> shouldBeApproximately 0.79666666
-  accuracy |> shouldBeApproximately 0.60666666
+  accuracy |> shouldBeApproximately 0.72666666
 
 [<Fact>]
 let ``Check update parameters with momentum``() =
@@ -98,38 +101,19 @@ let ``Check update parameters with momentum``() =
 
 [<Fact>]
 let ``Check cost with momentum``() =
-  let dataFile = [() |> Path.getExecutingAssemblyLocation; "data"; "optimization.moons.mat"] |> Path.combine
-  let data = MatlabReader.ReadAll<double>(dataFile, "X", "Y")
-  let X, Y = data.["X"], data.["Y"]
-
-  let arch =
-    { nₓ = X.RowCount
-      Layers =
-        [| { n = 5; Activation = ReLU; KeepProb = None }
-           { n = 2; Activation = ReLU; KeepProb = None }
-           { n = 1; Activation = Sigmoid; KeepProb = None } |] }
-
-  let hp =
-    { Epochs = 5
-      α = 0.0007
-      HeScale = 1.
-      λ = None
-      Optimization = MomentumOptimization MomentumParameters.Defaults
-      BatchSize = BatchSize64 }
+  let X, Y, arch, hp = getTestData (MomentumOptimization MomentumParameters.Defaults)
 
   let cmap = Dictionary<int, double>()
   let callback =
     fun e _ J _ -> if e % 1 = 0 then cmap.[e] <- J else ()
 
-  let p0 = DataLoaders.loadParameters 3 "data\\params.mat"
-  let parameters = DNN.trainNetwork (DNN.Parameters p0) callback arch hp X Y
+  let parameters = DNN.trainNetwork 1 None callback arch hp X Y
 
   let costs = cmap |> Seq.sortBy (fun kv -> kv.Key) |> Seq.map (fun kv -> kv.Value) |> Vector<double>.Build.DenseOfEnumerable
-  costs |> shouldBeEquivalentV [| 0.702413; 0.702397; 0.702372; 0.702341; 0.702305 |]
+  costs |> shouldBeEquivalentV [| 0.65662838; 0.65658572; 0.65650999; 0.65642717; 0.65632699 |]
 
   let accuracy = DNN.computeAccuracy arch X Y parameters
-  //accuracy |> shouldBeApproximately 0.79666666
-  accuracy |> shouldBeApproximately 0.60666666
+  accuracy |> shouldBeApproximately 0.72666666
   
 [<Fact>]
 let ``Check update parameters with ADAM``() =
@@ -192,38 +176,19 @@ let ``Check update parameters with ADAM``() =
 
 [<Fact>]
 let ``Check cost with ADAM``() =
-  let dataFile = [() |> Path.getExecutingAssemblyLocation; "data"; "optimization.moons.mat"] |> Path.combine
-  let data = MatlabReader.ReadAll<double>(dataFile, "X", "Y")
-  let X, Y = data.["X"], data.["Y"]
-
-  let arch =
-    { nₓ = X.RowCount
-      Layers =
-        [| { n = 5; Activation = ReLU; KeepProb = None }
-           { n = 2; Activation = ReLU; KeepProb = None }
-           { n = 1; Activation = Sigmoid; KeepProb = None } |] }
-
-  let hp =
-    { Epochs = 5
-      α = 0.0007
-      HeScale = 1.
-      λ = None
-      Optimization = ADAMOptimization ADAMParameters.Defaults
-      BatchSize = BatchSize64 }
+  let X, Y, arch, hp = getTestData (ADAMOptimization ADAMParameters.Defaults)
 
   let cmap = Dictionary<int, double>()
   let callback =
     fun e _ J _ -> if e % 1 = 0 then cmap.[e] <- J else ()
 
-  let p0 = DataLoaders.loadParameters 3 "data\\params.mat"
-  let parameters = DNN.trainNetwork (DNN.Parameters p0) callback arch hp X Y
+  let parameters = DNN.trainNetwork 1 None callback arch hp X Y
 
   let costs = cmap |> Seq.sortBy (fun kv -> kv.Key) |> Seq.map (fun kv -> kv.Value) |> Vector<double>.Build.DenseOfEnumerable
-  costs |> shouldBeEquivalentV [| 0.702166; 0.700860; 0.699807; 0.698633; 0.697517 |]
+  costs |> shouldBeEquivalentV [| 0.65594628; 0.65411629; 0.65212027; 0.65033125; 0.64844627 |]
 
   let accuracy = DNN.computeAccuracy arch X Y parameters
-  //accuracy |> shouldBeApproximately 0.79666666
-  accuracy |> shouldBeApproximately 0.61666666
+  accuracy |> shouldBeApproximately 0.73
 
 [<Fact>]
 let ``Check _getMiniBatches for 1``() =

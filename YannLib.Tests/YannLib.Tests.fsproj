@@ -17,9 +17,6 @@
     <None Include="data\optimization.moons.mat">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="data\params.mat">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
     <None Include="data\regularization.ps0.mat">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

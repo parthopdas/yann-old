@@ -35,6 +35,6 @@ let run callback =
       Optimization = NoOptimization
       BatchSize = BatchSizeAll }
 
-  trainNetwork (Seed 1) callback arch hp data.["X"] data.["Y"] |> ignore
+  trainNetwork 1 None callback arch hp data.["X"] data.["Y"] |> ignore
 
 

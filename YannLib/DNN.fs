@@ -68,6 +68,16 @@ type BatchSize =
   | BatchSize512
   | BatchSize1024
   | BatchSizeAll
+  with
+  member this.toInt max =
+    match this with
+    | BatchSize1 -> 1
+    | BatchSize64 -> 64
+    | BatchSize128 -> 128
+    | BatchSize256 -> 256
+    | BatchSize512 -> 512
+    | BatchSize1024 -> 1024
+    | BatchSizeAll -> max
 
 type MomentumParameters = 
   { β: double }
@@ -121,10 +131,6 @@ type TrainingState =
     | NoOptTrainingState p -> p
     | MomentumTrainingState (p, _) -> p
     | ADAMTrainingState (p, _, _, _) -> p
-
-type ParameterInitialization = 
-  | Parameters of Parameters
-  | Seed of int
 
 [<DebuggerDisplay("Aprev = {Aprev.ShapeString()}, W = {W.ShapeString()}, b = {b.ShapeString()}, Z = {Z.ShapeString()}")>]
 type Cache = { Aprev: Matrix<double>; D: Matrix<double> option; W: Matrix<double>; b: Vector<double>; Z: Matrix<double> }
@@ -386,17 +392,8 @@ let computeAccuracy arch (X: Matrix<double>) (Y: Matrix<double>) parameters =
   let Ŷ = predict arch X parameters
   1. - Y.Subtract(Ŷ).ColumnAbsoluteSums().Sum() / (Y.RowCount * Y.ColumnCount |> double)
 
-let private __bsToInt max = function
-  | BatchSize1 -> 1
-  | BatchSize64 -> 64
-  | BatchSize128 -> 128
-  | BatchSize256 -> 256
-  | BatchSize512 -> 512
-  | BatchSize1024 -> 1024
-  | BatchSizeAll -> max
-
-let _getMiniBatches batchSize (X: Matrix<double>, Y: Matrix<double>): (Matrix<double> * Matrix<double>) seq =
-  let bs = batchSize |> __bsToInt X.ColumnCount
+let _getMiniBatches (batchSize: BatchSize) (X: Matrix<double>, Y: Matrix<double>): (Matrix<double> * Matrix<double>) seq =
+  let bs = batchSize.toInt X.ColumnCount
   seq {
     let nComplete = X.ColumnCount / bs
     for bn = 0 to nComplete - 1 do
@@ -410,26 +407,8 @@ let _getMiniBatches batchSize (X: Matrix<double>, Y: Matrix<double>): (Matrix<do
       yield X.[*, c0 .. c1], Y.[*, c0 .. c1]
   }
 
-// TODO: Clean this up
-let mutable i = 0
-
 let shuffleDataSet_ seed (X: Matrix<double>, Y: Matrix<double>)  =
-  let parray =
-    [| [|174; 113; 86; 239; 12; 252; 261; 39; 200; 61; 122; 279; 126; 184; 151; 188; 130; 218; 70; 16; 283; 189; 2; 150; 274; 135; 11; 278; 41; 154; 294; 173; 53; 14; 60; 25; 155; 212; 199; 194; 88; 232; 159; 77; 267; 255; 103; 54; 202; 62; 216; 121; 265; 137; 44; 115; 157; 165; 292; 69; 217; 52; 210; 22; 257; 256; 3; 55; 134; 26; 101; 97; 272; 51; 36; 13; 183; 186; 102; 273; 262; 28; 254; 21; 9; 235; 95; 20; 158; 45; 224; 29; 24; 164; 146; 112; 116; 237; 175; 33; 243; 291; 63; 123; 226; 66; 49; 229; 238; 298; 139; 299; 0; 98; 128; 85; 108; 143; 204; 83; 182; 4; 296; 57; 220; 99; 59; 179; 271; 288; 290; 46; 198; 120; 30; 228; 56; 180; 246; 169; 282; 127; 230; 144; 42; 250; 177; 76; 205; 7; 73; 219; 221; 233; 152; 32; 15; 94; 107; 234; 147; 264; 35; 241; 87; 206; 259; 170; 213; 201; 195; 285; 240; 268; 64; 10; 197; 275; 260; 93; 281; 284; 5; 208; 193; 203; 58; 104; 225; 6; 276; 149; 163; 214; 74; 207; 190; 111; 293; 106; 148; 289; 244; 65; 185; 141; 156; 132; 100; 211; 31; 118; 119; 286; 167; 38; 222; 277; 82; 50; 84; 247; 251; 162; 75; 124; 105; 266; 129; 295; 196; 8; 40; 172; 249; 110; 47; 270; 48; 18; 43; 17; 258; 166; 90; 117; 153; 19; 78; 160; 114; 72; 68; 209; 215; 136; 131; 1; 187; 227; 178; 181; 133; 223; 248; 168; 263; 142; 245; 27; 138; 89; 23; 96; 79; 287; 192; 242; 171; 67; 145; 297; 81; 231; 37; 140; 34; 125; 236; 253; 176; 92; 109; 280; 71; 161; 269; 91; 80; 191|]
-       [|224; 136; 67; 231; 213; 77; 1; 281; 191; 190; 75; 265; 250; 37; 257; 295; 90; 268; 21; 42; 169; 199; 78; 276; 48; 117; 255; 12; 194; 106; 186; 11; 193; 111; 166; 3; 220; 14; 293; 144; 86; 6; 16; 178; 236; 267; 229; 125; 7; 41; 210; 135; 272; 133; 34; 218; 35; 52; 101; 222; 298; 219; 31; 161; 47; 92; 64; 85; 124; 234; 168; 247; 227; 145; 262; 242; 274; 38; 24; 214; 282; 201; 205; 294; 83; 288; 151; 233; 87; 50; 29; 137; 228; 68; 142; 149; 271; 32; 221; 122; 23; 279; 172; 171; 63; 131; 139; 51; 88; 223; 291; 94; 292; 140; 256; 189; 152; 10; 127; 81; 251; 289; 167; 249; 215; 13; 61; 36; 55; 129; 192; 98; 66; 19; 30; 258; 286; 261; 264; 5; 143; 62; 185; 207; 8; 297; 40; 275; 239; 120; 45; 33; 128; 15; 226; 159; 39; 103; 188; 17; 113; 95; 96; 290; 174; 217; 126; 93; 108; 230; 238; 147; 4; 26; 216; 200; 209; 132; 79; 285; 56; 22; 211; 154; 72; 76; 138; 46; 164; 177; 283; 54; 115; 71; 163; 180; 206; 176; 280; 2; 28; 299; 287; 9; 69; 150; 44; 153; 196; 97; 102; 184; 243; 57; 252; 80; 148; 165; 112; 0; 248; 53; 284; 162; 91; 114; 254; 116; 244; 18; 232; 273; 43; 179; 197; 105; 157; 20; 266; 237; 235; 212; 183; 182; 121; 99; 84; 59; 58; 202; 156; 296; 195; 277; 70; 198; 170; 60; 175; 107; 263; 181; 245; 203; 65; 260; 225; 246; 25; 270; 187; 27; 110; 160; 240; 173; 73; 109; 123; 134; 208; 146; 119; 158; 100; 89; 82; 269; 204; 104; 74; 118; 141; 49; 278; 259; 130; 241; 253; 155|]
-       [|114; 99; 198; 80; 30; 82; 51; 61; 58; 119; 228; 259; 97; 12; 13; 251; 174; 211; 131; 257; 79; 90; 288; 9; 100; 285; 281; 34; 216; 286; 46; 184; 125; 150; 151; 7; 263; 158; 168; 289; 112; 284; 219; 148; 270; 54; 157; 239; 248; 278; 71; 142; 136; 269; 220; 41; 183; 67; 208; 23; 68; 159; 52; 169; 267; 250; 43; 231; 192; 127; 185; 101; 218; 62; 241; 215; 237; 63; 152; 42; 18; 291; 5; 181; 78; 287; 109; 221; 107; 224; 205; 17; 196; 92; 143; 135; 0; 203; 140; 212; 276; 128; 40; 268; 264; 10; 70; 36; 277; 86; 106; 60; 73; 172; 33; 110; 65; 118; 232; 98; 260; 84; 28; 238; 39; 204; 209; 66; 64; 223; 93; 210; 38; 234; 275; 175; 235; 271; 163; 177; 266; 32; 124; 15; 117; 200; 161; 214; 155; 145; 76; 19; 242; 115; 282; 252; 96; 240; 162; 108; 44; 69; 197; 95; 6; 37; 129; 2; 21; 170; 102; 8; 296; 49; 94; 187; 186; 89; 14; 103; 226; 283; 31; 116; 27; 182; 122; 45; 77; 207; 88; 87; 132; 48; 111; 249; 105; 104; 56; 55; 206; 290; 202; 191; 274; 167; 254; 201; 194; 178; 137; 294; 29; 233; 297; 246; 3; 171; 83; 189; 134; 91; 4; 265; 188; 293; 299; 20; 35; 245; 50; 57; 195; 225; 279; 227; 164; 121; 53; 154; 247; 199; 26; 144; 193; 272; 25; 253; 133; 47; 141; 165; 72; 59; 156; 81; 130; 292; 173; 217; 85; 256; 261; 147; 222; 190; 138; 166; 243; 273; 262; 123; 113; 255; 24; 213; 179; 120; 180; 22; 11; 280; 146; 1; 75; 139; 149; 160; 258; 298; 229; 126; 295; 236; 153; 244; 230; 16; 74; 176|]
-       [|64; 233; 215; 5; 91; 247; 273; 278; 134; 242; 94; 290; 172; 281; 152; 213; 271; 262; 150; 88; 147; 23; 158; 151; 221; 96; 66; 182; 272; 69; 153; 210; 222; 195; 227; 225; 44; 116; 20; 11; 165; 211; 60; 297; 264; 130; 293; 17; 201; 100; 70; 121; 244; 8; 3; 40; 102; 143; 235; 29; 111; 226; 112; 39; 15; 146; 24; 106; 161; 261; 148; 192; 183; 18; 274; 115; 241; 269; 6; 179; 198; 140; 47; 26; 16; 199; 117; 135; 51; 80; 283; 141; 124; 298; 35; 77; 10; 129; 296; 49; 105; 258; 87; 137; 230; 90; 82; 14; 203; 54; 108; 279; 46; 194; 31; 71; 204; 167; 250; 190; 125; 216; 219; 255; 142; 197; 168; 193; 284; 275; 53; 58; 128; 7; 126; 63; 118; 93; 200; 282; 122; 114; 89; 256; 68; 186; 170; 237; 217; 196; 175; 2; 245; 149; 240; 220; 160; 288; 73; 22; 109; 181; 36; 164; 162; 42; 157; 110; 236; 166; 174; 19; 214; 43; 171; 155; 176; 285; 34; 259; 223; 254; 189; 98; 136; 38; 28; 177; 291; 123; 202; 95; 270; 4; 263; 33; 55; 299; 76; 59; 50; 224; 252; 86; 99; 180; 72; 267; 56; 266; 212; 62; 277; 286; 209; 103; 289; 163; 48; 119; 83; 145; 85; 295; 12; 97; 131; 113; 228; 139; 1; 52; 229; 144; 178; 132; 78; 9; 188; 243; 92; 206; 185; 238; 74; 292; 276; 253; 21; 127; 169; 79; 184; 13; 280; 81; 205; 75; 57; 65; 30; 239; 45; 191; 104; 257; 246; 218; 27; 187; 265; 159; 251; 248; 173; 207; 67; 231; 232; 41; 101; 120; 37; 133; 84; 0; 287; 294; 260; 32; 25; 154; 61; 208; 138; 156; 234; 249; 268; 107|]
-       [|202; 292; 91; 137; 152; 122; 178; 148; 79; 281; 194; 261; 277; 134; 38; 64; 259; 185; 258; 279; 175; 255; 164; 75; 142; 248; 132; 170; 183; 135; 71; 21; 111; 153; 231; 191; 31; 13; 190; 44; 9; 249; 47; 109; 7; 189; 211; 52; 273; 198; 97; 126; 30; 50; 86; 165; 80; 158; 223; 99; 241; 110; 20; 233; 256; 227; 24; 94; 230; 92; 58; 101; 11; 283; 49; 150; 98; 56; 140; 186; 55; 83; 128; 129; 228; 154; 36; 167; 124; 299; 280; 201; 284; 174; 254; 106; 252; 214; 67; 78; 219; 32; 271; 286; 145; 264; 93; 262; 176; 144; 294; 222; 251; 5; 6; 8; 285; 127; 12; 2; 295; 204; 296; 121; 59; 115; 131; 149; 274; 26; 250; 276; 239; 89; 95; 197; 162; 40; 200; 288; 297; 278; 267; 146; 43; 181; 244; 138; 206; 272; 215; 269; 193; 25; 173; 268; 218; 117; 209; 290; 159; 57; 107; 212; 72; 225; 187; 37; 179; 74; 105; 65; 139; 48; 287; 3; 298; 270; 141; 68; 0; 113; 253; 116; 216; 120; 125; 27; 188; 172; 63; 76; 275; 213; 61; 77; 171; 10; 235; 136; 60; 100; 234; 33; 217; 34; 161; 54; 242; 123; 208; 207; 147; 108; 195; 224; 169; 114; 210; 180; 257; 220; 82; 14; 35; 166; 46; 184; 289; 112; 73; 192; 182; 69; 238; 103; 163; 84; 28; 4; 70; 119; 160; 246; 282; 16; 247; 90; 18; 87; 226; 291; 151; 62; 51; 81; 42; 265; 236; 130; 88; 29; 53; 240; 45; 243; 229; 66; 263; 260; 104; 22; 168; 41; 232; 293; 96; 1; 177; 15; 102; 157; 205; 19; 39; 196; 143; 266; 23; 237; 17; 221; 118; 85; 203; 199; 155; 156; 133; 245|] |]
-
-  let inversion = 
-    if (X.ColumnCount = 300) then
-      i <- i + 1
-      parray.[i - 1]
-    else
-      // TODO: add epoch # to seed
-      Combinatorics.GeneratePermutation(X.ColumnCount, Random(seed))
-
-  let permutation = Permutation(inversion).Inverse()
+  let permutation = Permutation(Combinatorics.GeneratePermutation(X.ColumnCount, Random(seed)))
   X.PermuteColumns(permutation)
   Y.PermuteColumns(permutation)
 
@@ -443,15 +422,14 @@ let private __trainNetworkFor1MiniBatch arch hp (J: double, ts: TrainingState, t
   let J = J + (double m) * (_computeCost hp.λ Y Ŷ ts.Parameters)
   J, ts, timer
 
-let private __trainNetworkFor1Epoch (timer: Stopwatch) (callback: EpochCallback) (arch: Architecture) (X: Matrix<double>) (Y: Matrix<double>) (hp: HyperParameters) (ts: TrainingState) epoch =
+let private __trainNetworkFor1Epoch seed (timer: Stopwatch) (callback: EpochCallback) (arch: Architecture) (X: Matrix<double>) (Y: Matrix<double>) (hp: HyperParameters) (ts: TrainingState) epoch =
   let m = X.ColumnCount
   timer.Restart()
   // NOTE: Should we move it out of there?
-  // TODO: Ask on various forums what is the best practice if dataset is large
-  // TODO: Do this at the start of trainNetwork
+  // TODO: Both deeplearning.ai and neuralnetworksanddeeplearning.com do it on every epoc. Ask on various forums what is the best practice if dataset is large?
   let X = X.Clone()
   let Y = Y.Clone()
-  shuffleDataSet_ 0 (X, Y)
+  shuffleDataSet_ (seed + epoch) (X, Y)
 
   let J, ts, timer = 
     (X, Y)
@@ -463,16 +441,12 @@ let private __trainNetworkFor1Epoch (timer: Stopwatch) (callback: EpochCallback)
   callback epoch timer.Elapsed J accuracy
   ts
 
-// TODO: pass seed separately and pass it on to shuffle
-let trainNetwork paramsInit (callback: EpochCallback) (arch: Architecture) (hp: HyperParameters) (X: Matrix<double>) (Y: Matrix<double>): Parameters =
+let trainNetwork seed p0 (callback: EpochCallback) (arch: Architecture) (hp: HyperParameters) (X: Matrix<double>) (Y: Matrix<double>): Parameters =
   assert (X.ColumnCount = Y.ColumnCount)
 
   let timer = Stopwatch()
 
-  let p0 = 
-    match paramsInit with
-    | Parameters ps -> ps
-    | Seed s -> arch |> _initializeParameters hp.HeScale s
+  let p0 = p0 |> Option.defaultValue (_initializeParameters hp.HeScale seed arch)
 
   let ts0 =
     match hp.Optimization with
@@ -482,7 +456,7 @@ let trainNetwork paramsInit (callback: EpochCallback) (arch: Architecture) (hp: 
 
   let ts =
     seq { for epoch in 0 .. (hp.Epochs - 1) do epoch }
-    |> Seq.fold (__trainNetworkFor1Epoch timer callback arch X Y hp) ts0
+    |> Seq.fold (__trainNetworkFor1Epoch seed timer callback arch X Y hp) ts0
 
   ts.Parameters
 

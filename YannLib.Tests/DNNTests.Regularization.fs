@@ -147,7 +147,7 @@ let ``Check predictions with regularization``() =
 
   let ps0 = DataLoaders.loadParameters 3 "data\\regularization.ps0.mat"
 
-  let parameters = DNN.trainNetwork (Parameters ps0) callback arch hp train_X train_Y
+  let parameters = DNN.trainNetwork 1 (Some ps0) callback arch hp train_X train_Y
 
   let trainAccuracy = DNN.computeAccuracy arch train_X train_Y parameters
   trainAccuracy |> shouldBeApproximately 0.9289099
@@ -296,11 +296,11 @@ let ``Check predictions with dropout``() =
 
   let ps0 = DataLoaders.loadParameters 3 "data\\regularization.ps0.mat"
 
-  let parameters = DNN.trainNetwork (Parameters ps0) callback arch hp train_X train_Y
+  let parameters = DNN.trainNetwork 1 (Some ps0) callback arch hp train_X train_Y
 
   let trainAccuracy = DNN.computeAccuracy arch train_X train_Y parameters
-  trainAccuracy |> shouldBeApproximately 0.93364928
+  trainAccuracy |> shouldBeApproximately 0.93838862
 
   let testAccuracy = DNN.computeAccuracy arch test_X test_Y parameters
-  testAccuracy |> shouldBeApproximately 0.925
+  testAccuracy |> shouldBeApproximately 0.935
 
