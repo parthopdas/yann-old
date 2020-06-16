@@ -45,6 +45,8 @@ let _invalidVector = Vector<double>.Build.Sparse(1, 0.0)
 
 let εDivBy0Gaurd = 1E-12
 
+let bugCheck<'T> : 'T = raise (InvalidOperationException("This case cannot occur. It is a bug in the code."))
+
 type Activation =
   | ReLU
   | Sigmoid
@@ -67,26 +69,58 @@ type BatchSize =
   | BatchSize1024
   | BatchSizeAll
 
+type MomentumParameters = 
+  { β: double }
+  static member Defaults: MomentumParameters =
+    { β = 0.9 }
+
+type ADAMParameters = 
+  { β1: double; β2: double; ε: double }
+  static member Defaults: ADAMParameters =
+    { β1 = 0.9; β2 = 0.999; ε = 1e-8 }
+
+type Optimization =
+  | NoOptimization
+  | MomentumOptimization of MomentumParameters
+  | ADAMOptimization of ADAMParameters
+
 type HyperParameters =
   { Epochs : int
     α: double
     HeScale: double
     λ: double option
+    Optimization: Optimization
     BatchSize: BatchSize } with
-  static member CreateWithDefaults () = 
+  static member Defaults = 
     { Epochs = 1_000
       α = 0.01
       HeScale = 1.
       λ = Some 0.7
-      BatchSize = BatchSize128 }
+      Optimization = ADAMOptimization ADAMParameters.Defaults
+      BatchSize = BatchSize64 } 
 
 [<DebuggerDisplay("W = {W.ShapeString()}, b = {b.ShapeString()}")>]
 type Parameter = { W: Matrix<double>; b: Vector<double> }
 type Parameters = Map<int, Parameter>
 
-type Vs = Map<int, Parameter>
+/// Exponentially weighted average of the gradients.
+type GradientVelocity = { dWv: Matrix<double>; dbv: Vector<double> }
+type GradientVelocities = Map<int, GradientVelocity>
 
-type Ss = Map<int, Parameter>
+/// Exponentially weighted average of the squared gradient.
+type SquaredGradientVelocity = { dWs: Matrix<double>; dbs: Vector<double> }
+type SquaredGradientVelocities = Map<int, SquaredGradientVelocity>
+
+type TrainingState =
+  | NoOptTrainingState of Parameters
+  | MomentumTrainingState of Parameters * GradientVelocities
+  | ADAMTrainingState of Parameters * GradientVelocities * SquaredGradientVelocities * double
+  with
+  member this.Parameters =
+    match this with
+    | NoOptTrainingState p -> p
+    | MomentumTrainingState (p, _) -> p
+    | ADAMTrainingState (p, _, _, _) -> p
 
 type ParameterInitialization = 
   | Parameters of Parameters
@@ -118,7 +152,7 @@ let _initializeParameters heScale (seed: int) (arch: Architecture): Parameters =
   |> Seq.mapi (fun i (W, b) -> i + 1, { W = W; b = b })
   |> Map.ofSeq
 
-let _initializeVs (arch: Architecture): Vs =
+let _initializeGradientVelocities (arch: Architecture): GradientVelocities =
   let ws =
     seq { yield arch.nₓ; yield! arch.Layers |> Seq.map (fun l -> l.n) }
     |> Seq.pairwise
@@ -129,24 +163,10 @@ let _initializeVs (arch: Architecture): Vs =
     |> Seq.map (fun l -> Vector<double>.Build.Dense(l.n, 0.))
 
   Seq.zip ws bs
-  |> Seq.mapi (fun i (W, b) -> i + 1, { W = W; b = b })
+  |> Seq.mapi (fun i (dW, db) -> i + 1, { dWv = dW; dbv = db })
   |> Map.ofSeq
 
-let _initializeSs (arch: Architecture): Vs * Ss =
-  let wsv =
-    seq { yield arch.nₓ; yield! arch.Layers |> Seq.map (fun l -> l.n) }
-    |> Seq.pairwise
-    |> Seq.map (fun (nPrev, n) -> Matrix<double>.Build.Dense(n, nPrev, 0.))
-
-  let bsv =
-    arch.Layers
-    |> Seq.map (fun l -> Vector<double>.Build.Dense(l.n, 0.))
-
-  let v =
-    Seq.zip wsv bsv
-    |> Seq.mapi (fun i (W, b) -> i + 1, { W = W; b = b })
-    |> Map.ofSeq
-
+let _initializeSquaredGradientVelocities (arch: Architecture): SquaredGradientVelocities =
   let wss =
     seq { yield arch.nₓ; yield! arch.Layers |> Seq.map (fun l -> l.n) }
     |> Seq.pairwise
@@ -156,12 +176,9 @@ let _initializeSs (arch: Architecture): Vs * Ss =
     arch.Layers
     |> Seq.map (fun l -> Vector<double>.Build.Dense(l.n, 0.))
 
-  let s = 
-    Seq.zip wss bss
-    |> Seq.mapi (fun i (W, b) -> i + 1, { W = W; b = b })
-    |> Map.ofSeq
-
-  v, s
+  Seq.zip wss bss
+  |> Seq.mapi (fun i (dW, db) -> i + 1, { dWs = dW; dbs = db })
+  |> Map.ofSeq
 
 let private __activationsForward = function
   | ReLU -> Activations.ReLU.forward
@@ -227,7 +244,7 @@ let _computeCost λ (Y: Matrix<double>) (Ŷ: Matrix<double>) (parameters: Parame
 let _adjustdAForDropout (dA: Matrix<double>) = function
   | Some D, Some kp -> dA.PointwiseMultiply(D).Divide(kp)
   | None, None -> dA
-  | _ -> failwithf "kp and D both need to be None or Some. This is a bug with the code."
+  | _ -> bugCheck
 
 let _linearBackward λ (dZ: Matrix<double>) { Aprev = Aprev; W = W } =
   let m = Aprev.Shape().[1] |> double
@@ -266,7 +283,7 @@ let _backwardPropagate arch λ (Y: Matrix<double>) (Ŷ: Matrix<double>) (caches:
   seq { for l = arch.Layers.Length downto 1 do yield l, arch.Layers.[l - 1] }
   |> Seq.fold _folder g0
 
-let _updateParameters arch (α: double) (parameters: Parameters) (gradients: Gradients): Parameters =
+let _updateParametersWithNoOptimization arch (α: double) (parameters: Parameters) (gradients: Gradients): TrainingState =
   let _folder acc l =
     let W = parameters.[l].W - α * gradients.[l].dW
     let b = parameters.[l].b - α * gradients.[l].db
@@ -274,40 +291,48 @@ let _updateParameters arch (α: double) (parameters: Parameters) (gradients: Gra
 
   seq { for l = 1 to arch.Layers.Length do yield l }
   |> Seq.fold _folder Map.empty
+  |> NoOptTrainingState
 
-let _updateParametersMomentum arch (α: double) (β: double) (gradients: Gradients) (v: Vs) (parameters: Parameters) : Parameters * Vs =
+let _updateParametersWithMomentum arch (α: double) (mp: MomentumParameters) (gradients: Gradients) (parameters: Parameters, v: GradientVelocities): TrainingState =
   let _folder (accp, accv) l =
-    let dWv = v.[l].W.Multiply(β) + gradients.[l].dW.Multiply(1. - β)
-    let dbv = v.[l].b.Multiply(β) + gradients.[l].db.Multiply(1. - β)
+    let dWv = mp.β * v.[l].dWv + (1. - mp.β) * gradients.[l].dW
+    let dbv = mp.β * v.[l].dbv + (1. - mp.β) * gradients.[l].db
 
-    // TODO: Change W, b in Vs to dW and db
     let W = parameters.[l].W - α * dWv
     let b = parameters.[l].b - α * dbv
-    (accp |> Map.add l { W = W; b = b }), (accv |> Map.add l { W = dWv; b = dbv })
+    (accp |> Map.add l { W = W; b = b }), (accv |> Map.add l { dWv = dWv; dbv = dbv })
 
   seq { for l = 1 to arch.Layers.Length do yield l }
   |> Seq.fold _folder (Map.empty, Map.empty)
+  |> MomentumTrainingState
 
-// TODO: Change W, b in Vs to dW and db
-// TODO: Change W, b in Ss to dW and db
-let _updateParametersADAM arch (α: double) (β1: double) (β2: double) (ε: double) (t: double) (gradients: Gradients) (v: Vs) (s: Ss) (parameters: Parameters) : Parameters * Vs * Ss =
+let _updateParametersWithADAM arch (α: double) (ap: ADAMParameters) (gradients: Gradients) (parameters: Parameters, v: GradientVelocities, s: SquaredGradientVelocities, t: double): TrainingState =
   let _folder (accp, accv, accs) l =
-    let dWv = v.[l].W.Multiply(β1) + gradients.[l].dW.Multiply(1. - β1)
-    let dbv = v.[l].b.Multiply(β1) + gradients.[l].db.Multiply(1. - β1)
-    let dWv_corrected = dWv / (1. - β1 ** t)
-    let dbv_corrected = dbv / (1. - β1 ** t)
+    let dWv = ap.β1 * v.[l].dWv + (1. - ap.β1) * gradients.[l].dW
+    let dbv = ap.β1 * v.[l].dbv + (1. - ap.β1) * gradients.[l].db
+    let dWv_corrected = dWv / (1. - ap.β1 ** t)
+    let dbv_corrected = dbv / (1. - ap.β1 ** t)
 
-    let dWs = β2 * s.[l].W + (1. - β2) * gradients.[l].dW.PointwisePower(2.)
-    let dbs = β2 * s.[l].b + (1. - β2) * gradients.[l].db.PointwisePower(2.)
-    let dWs_corrected = dWs / (1. - β2 ** t)
-    let dbs_corrected = dbs / (1. - β2 ** t)
+    let dWs = ap.β2 * s.[l].dWs + (1. - ap.β2) * gradients.[l].dW.PointwisePower(2.)
+    let dbs = ap.β2 * s.[l].dbs + (1. - ap.β2) * gradients.[l].db.PointwisePower(2.)
+    let dWs_corrected = dWs / (1. - ap.β2 ** t)
+    let dbs_corrected = dbs / (1. - ap.β2 ** t)
 
-    let W = parameters.[l].W - α * dWv_corrected.PointwiseDivide(dWs_corrected.PointwisePower(0.5) + ε)
-    let b = parameters.[l].b - α * dbv_corrected.PointwiseDivide(dbs_corrected.PointwisePower(0.5) + ε)
-    (accp |> Map.add l { W = W; b = b }), (accv |> Map.add l { W = dWv; b = dbv }), (accs |> Map.add l { W = dWs; b = dbs })
+    let W = parameters.[l].W - α * dWv_corrected.PointwiseDivide(dWs_corrected.PointwisePower(0.5) + ap.ε)
+    let b = parameters.[l].b - α * dbv_corrected.PointwiseDivide(dbs_corrected.PointwisePower(0.5) + ap.ε)
+    (accp |> Map.add l { W = W; b = b }), (accv |> Map.add l { dWv = dWv; dbv = dbv }), (accs |> Map.add l { dWs = dWs; dbs = dbs })
 
-  seq { for l = 1 to arch.Layers.Length do yield l }
-  |> Seq.fold _folder (Map.empty, Map.empty, Map.empty)
+  let p, v, s = 
+    seq { for l = 1 to arch.Layers.Length do yield l }
+    |> Seq.fold _folder (Map.empty, Map.empty, Map.empty)
+
+  (p, v, s, t + 1.) |> ADAMTrainingState
+
+let _updateParameters arch (hp: HyperParameters) (ts: TrainingState) (gradients: Gradients): TrainingState =
+  match hp.Optimization with
+  | NoOptimization -> _updateParametersWithNoOptimization arch hp.α ts.Parameters gradients
+  | MomentumOptimization mp -> _updateParametersWithMomentum arch hp.α mp gradients (match ts with | MomentumTrainingState (p, v) -> (p, v) | _ -> bugCheck)
+  | ADAMOptimization ap -> _updateParametersWithADAM arch hp.α ap gradients (match ts with | ADAMTrainingState (p, v, s, t) -> (p, v, s, t) | _ -> bugCheck)
 
 // NOTE: Inspiration from deeplearning.ai & https://stats.stackexchange.com/questions/332089/numerical-gradient-checking-best-practices
 let _calculateNumericalGradients λ ε arch (parameters: Parameters) (X: Matrix<double>) (Y: Matrix<double>) =
@@ -385,6 +410,7 @@ let _getMiniBatches batchSize (X: Matrix<double>, Y: Matrix<double>): (Matrix<do
       yield X.[*, c0 .. c1], Y.[*, c0 .. c1]
   }
 
+// TODO: Clean this up
 let mutable i = 0
 
 let shuffleDataSet_ seed (X: Matrix<double>, Y: Matrix<double>)  =
@@ -407,49 +433,58 @@ let shuffleDataSet_ seed (X: Matrix<double>, Y: Matrix<double>)  =
   X.PermuteColumns(permutation)
   Y.PermuteColumns(permutation)
 
-let private __trainNetworkFor1MiniBatch arch hp (J: double, parameters: Parameters, timer: Stopwatch) (X: Matrix<double>, Y: Matrix<double>): (double * Parameters * Stopwatch) =
+let private __trainNetworkFor1MiniBatch arch hp (J: double, ts: TrainingState, timer: Stopwatch) (X: Matrix<double>, Y: Matrix<double>): (double * TrainingState * Stopwatch) =
   timer.Start()
-  let Ŷ, caches = _forwardPropagateTrain arch parameters X
+  let Ŷ, caches = _forwardPropagateTrain arch ts.Parameters X
   let gradients = _backwardPropagate arch hp.λ Y Ŷ caches
-  let parameters = _updateParameters arch hp.α parameters gradients
+  let ts = _updateParameters arch hp ts gradients
   timer.Stop()
   let m = X.ColumnCount
-  let J = J + (double m) * (_computeCost hp.λ Y Ŷ parameters)
-  J, parameters, timer
+  let J = J + (double m) * (_computeCost hp.λ Y Ŷ ts.Parameters)
+  J, ts, timer
+
+let private __trainNetworkFor1Epoch (timer: Stopwatch) (callback: EpochCallback) (arch: Architecture) (X: Matrix<double>) (Y: Matrix<double>) (hp: HyperParameters) (ts: TrainingState) epoch =
+  let m = X.ColumnCount
+  timer.Restart()
+  // NOTE: Should we move it out of there?
+  // TODO: Ask on various forums what is the best practice if dataset is large
+  // TODO: Do this at the start of trainNetwork
+  let X = X.Clone()
+  let Y = Y.Clone()
+  shuffleDataSet_ 0 (X, Y)
+
+  let J, ts, timer = 
+    (X, Y)
+    |> _getMiniBatches hp.BatchSize
+    |> Seq.fold (__trainNetworkFor1MiniBatch arch hp) (0., ts, timer)
+  timer.Stop()
+  let J = J / double m
+  let accuracy = computeAccuracy arch X Y ts.Parameters
+  callback epoch timer.Elapsed J accuracy
+  ts
 
 // TODO: pass seed separately and pass it on to shuffle
-let trainNetwork paramsInit (callback: EpochCallback) (arch: Architecture) (X: Matrix<double>) (Y: Matrix<double>) (hp: HyperParameters): Parameters =
+let trainNetwork paramsInit (callback: EpochCallback) (arch: Architecture) (hp: HyperParameters) (X: Matrix<double>) (Y: Matrix<double>): Parameters =
   assert (X.ColumnCount = Y.ColumnCount)
-  let m = X.ColumnCount
 
   let timer = Stopwatch()
-  // TODO: pull it out into a different method
-  let _folder parameters epoch =
-    timer.Restart()
-    // NOTE: Should we move it out of there?
-    // TODO: Ask on various forums what is the best practice if dataset is large
-    // TODO: Do this at the start of trainNetwork
-    let X = X.Clone()
-    let Y = Y.Clone()
-    shuffleDataSet_ 0 (X, Y)
-
-    let J, parameters, timer = 
-      (X, Y)
-      |> _getMiniBatches hp.BatchSize
-      |> Seq.fold (__trainNetworkFor1MiniBatch arch hp) (0., parameters, timer)
-    timer.Stop()
-    let J = J / double m
-    let accuracy = computeAccuracy arch X Y parameters
-    callback epoch timer.Elapsed J accuracy
-    parameters
 
   let p0 = 
     match paramsInit with
     | Parameters ps -> ps
     | Seed s -> arch |> _initializeParameters hp.HeScale s
 
-  seq { for epoch in 0 .. (hp.Epochs - 1) do epoch }
-  |> Seq.fold _folder p0
+  let ts0 =
+    match hp.Optimization with
+    | NoOptimization -> NoOptTrainingState p0
+    | MomentumOptimization -> MomentumTrainingState (p0, _initializeGradientVelocities arch)
+    | ADAMOptimization -> ADAMTrainingState (p0, _initializeGradientVelocities arch, _initializeSquaredGradientVelocities arch, 1.)
+
+  let ts =
+    seq { for epoch in 0 .. (hp.Epochs - 1) do epoch }
+    |> Seq.fold (__trainNetworkFor1Epoch timer callback arch X Y hp) ts0
+
+  ts.Parameters
 
 let calculateDeltaForGradientCheck λ ε arch (parameters: Parameters) (X: Matrix<double>) (Y: Matrix<double>) =
   let grads' =

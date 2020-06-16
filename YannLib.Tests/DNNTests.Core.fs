@@ -309,7 +309,7 @@ let ``Check update parameters``() =
   let grads = [(1, {dA = _invalidMatrix; dW = dW1; db = db1 })
                (2, {dA = _invalidMatrix; dW = dW2; db = db2 })] |> Map.ofList
 
-  let parameters = _updateParameters arch 0.1 parameters grads
+  let parameters = _updateParametersWithNoOptimization arch 0.1 parameters grads
 
   let W1 = 
     [[-0.59562069; -0.09991781; -2.14584584;  1.82662008]
@@ -322,7 +322,7 @@ let ``Check update parameters``() =
   let b2 = 
     [|-0.84610769|]
 
-  parameters.[1].W |> shouldBeEquivalentM W1
-  parameters.[1].b |> shouldBeEquivalentV b1
-  parameters.[2].W |> shouldBeEquivalentM W2
-  parameters.[2].b |> shouldBeEquivalentV b2
+  parameters.Parameters.[1].W |> shouldBeEquivalentM W1
+  parameters.Parameters.[1].b |> shouldBeEquivalentV b1
+  parameters.Parameters.[2].W |> shouldBeEquivalentM W2
+  parameters.Parameters.[2].b |> shouldBeEquivalentV b2

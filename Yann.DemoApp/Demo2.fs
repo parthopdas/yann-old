@@ -34,9 +34,10 @@ let run callback =
       α = 0.0075
       HeScale = 1.
       λ = None
+      Optimization = NoOptimization
       BatchSize = BatchSizeAll }
 
   let ps0 = DataLoaders.loadParameters 4 "parameters.mat"
-  let parameters = trainNetwork (Parameters ps0) callback arch data.["X"] data.["Y"] hp
+  let parameters = trainNetwork (Parameters ps0) callback arch hp data.["X"] data.["Y"]
   // Save parameters if necessary
   parameters |> ignore
