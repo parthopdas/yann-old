@@ -39,10 +39,10 @@ let ``Check cost with MBGD``() =
   let callback =
     fun e _ J _ -> if e % 1 = 0 then cmap.[e] <- J else ()
 
-  let parameters = DNN.trainNetwork 1 None callback arch hp X Y
+  let parameters = DNN.trainNetwork_ 1 None callback arch hp X Y
 
   let costs = cmap |> Seq.sortBy (fun kv -> kv.Key) |> Seq.map (fun kv -> kv.Value) |> Vector<double>.Build.DenseOfEnumerable
-  costs |> shouldBeEquivalentV [| 0.65659521; 0.65648103; 0.65637155; 0.65625827; 0.65614572 |]
+  costs |> shouldBeEquivalentV [| 0.65659521; 0.65648103; 0.65636767; 0.65625473; 0.65614438 |]
 
   let accuracy = DNN.computeAccuracy arch X Y parameters
   accuracy |> shouldBeApproximately 0.72666666
@@ -107,10 +107,10 @@ let ``Check cost with momentum``() =
   let callback =
     fun e _ J _ -> if e % 1 = 0 then cmap.[e] <- J else ()
 
-  let parameters = DNN.trainNetwork 1 None callback arch hp X Y
+  let parameters = DNN.trainNetwork_ 1 None callback arch hp X Y
 
   let costs = cmap |> Seq.sortBy (fun kv -> kv.Key) |> Seq.map (fun kv -> kv.Value) |> Vector<double>.Build.DenseOfEnumerable
-  costs |> shouldBeEquivalentV [| 0.65662838; 0.65658572; 0.65650999; 0.65642717; 0.65632699 |]
+  costs |> shouldBeEquivalentV [| 0.65662838; 0.65658289; 0.65651513; 0.65642342; 0.65631964 |]
 
   let accuracy = DNN.computeAccuracy arch X Y parameters
   accuracy |> shouldBeApproximately 0.72666666
@@ -182,10 +182,10 @@ let ``Check cost with ADAM``() =
   let callback =
     fun e _ J _ -> if e % 1 = 0 then cmap.[e] <- J else ()
 
-  let parameters = DNN.trainNetwork 1 None callback arch hp X Y
+  let parameters = DNN.trainNetwork_ 1 None callback arch hp X Y
 
   let costs = cmap |> Seq.sortBy (fun kv -> kv.Key) |> Seq.map (fun kv -> kv.Value) |> Vector<double>.Build.DenseOfEnumerable
-  costs |> shouldBeEquivalentV [| 0.65594628; 0.65411629; 0.65212027; 0.65033125; 0.64844627 |]
+  costs |> shouldBeEquivalentV [| 0.65594628; 0.65402773; 0.65219610; 0.65027799; 0.64834054 |]
 
   let accuracy = DNN.computeAccuracy arch X Y parameters
   accuracy |> shouldBeApproximately 0.73

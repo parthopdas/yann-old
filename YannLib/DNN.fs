@@ -43,13 +43,12 @@ open MathNet.Numerics
 let _invalidMatrix = Matrix<double>.Build.Sparse(1, 1, 0.0)
 let _invalidVector = Vector<double>.Build.Sparse(1, 0.0)
 
-let εDivBy0Gaurd = 1E-12
-
 let bugCheck<'T> : 'T = raise (InvalidOperationException("This case cannot occur. It is a bug in the code."))
 
 type Activation =
   | ReLU
   | Sigmoid
+  | Softmax
 
 type Layer =
   { n: int
@@ -187,12 +186,14 @@ let _initializeSquaredGradientVelocities (arch: Architecture): SquaredGradientVe
   |> Map.ofSeq
 
 let private __activationsForward = function
-  | ReLU -> Activations.ReLU.forward
-  | Sigmoid -> Activations.Sigmoid.forward
+  | ReLU -> Activations.ReLU.f
+  | Sigmoid -> Activations.Sigmoid.f
+  | Softmax -> Activations.Softmax.f
 
 let private __activationsBackward = function
-  | ReLU -> Activations.ReLU.backward
-  | Sigmoid -> Activations.Sigmoid.backward
+  | ReLU -> Activations.ReLU.df
+  | Sigmoid -> Activations.Sigmoid.df
+  | Softmax -> Activations.Softmax.df
 
 let _linearForward (Aprev: Matrix<double>) (W: Matrix<double>) (b: Vector<double>) =
   let Z = W.Multiply(Aprev) + b.BroadcastC(Aprev.ColumnCount)
@@ -266,7 +267,8 @@ let _linearBackward λ (dZ: Matrix<double>) { Aprev = Aprev; W = W } =
   dAprev, dW, db
 
 let _linearActivationBackward λ (dA: Matrix<double>) cache activation =
-  let dZ = __activationsBackward activation cache.Z dA
+  let dActivation = __activationsBackward activation cache.Z
+  let dZ = dA.PointwiseMultiply(dActivation)
   _linearBackward λ dZ cache
 
 let _backwardPropagate arch λ (Y: Matrix<double>) (Ŷ: Matrix<double>) (caches: Caches): Gradients =
@@ -282,7 +284,7 @@ let _backwardPropagate arch λ (Y: Matrix<double>) (Ŷ: Matrix<double>) (caches:
     acc |> Map.remove l |> Map.add l grad |> Map.add (l - 1) gradPrev
 
   let L = arch.Layers.Length
-  let dAL = - (Y.PointwiseDivide(Ŷ.Add(εDivBy0Gaurd)) - Y.Negate().Add(1.0).PointwiseDivide(Ŷ.Negate().Add(1.0 + εDivBy0Gaurd)))
+  let dAL = - (Y.PointwiseDivide(Ŷ.Add(Constants.εDivBy0Gaurd)) - Y.Negate().Add(1.0).PointwiseDivide(Ŷ.Negate().Add(1.0 + Constants.εDivBy0Gaurd)))
   let dAL = _adjustdAForDropout dAL (caches.[L].D, arch.Layers.[L - 1].KeepProb)
   let g0 = Map.empty |> Map.add L { _invalidGradient with dA = dAL }
 
@@ -393,19 +395,24 @@ let computeAccuracy arch (X: Matrix<double>) (Y: Matrix<double>) parameters =
   1. - Y.Subtract(Ŷ).ColumnAbsoluteSums().Sum() / (Y.RowCount * Y.ColumnCount |> double)
 
 let _getMiniBatches (batchSize: BatchSize) (X: Matrix<double>, Y: Matrix<double>): (Matrix<double> * Matrix<double>) seq =
-  let bs = batchSize.toInt X.ColumnCount
-  seq {
-    let nComplete = X.ColumnCount / bs
-    for bn = 0 to nComplete - 1 do
-      let c0 = bn * bs
-      let c1 = c0 + bs - 1
-      yield X.[*, c0 .. c1], Y.[*, c0 .. c1]
+  if batchSize = BatchSizeAll then
+    seq {
+      yield X, Y
+    }
+  else 
+    let bs = batchSize.toInt X.ColumnCount
+    seq {
+      let nComplete = X.ColumnCount / bs
+      for bn = 0 to nComplete - 1 do
+        let c0 = bn * bs
+        let c1 = c0 + bs - 1
+        yield X.[*, c0 .. c1], Y.[*, c0 .. c1]
 
-    if X.ColumnCount % bs <> 0 then
-      let c0 = nComplete * bs
-      let c1 = X.ColumnCount - 1
-      yield X.[*, c0 .. c1], Y.[*, c0 .. c1]
-  }
+      if X.ColumnCount % bs <> 0 then
+        let c0 = nComplete * bs
+        let c1 = X.ColumnCount - 1
+        yield X.[*, c0 .. c1], Y.[*, c0 .. c1]
+    }
 
 let shuffleDataSet_ seed (X: Matrix<double>, Y: Matrix<double>)  =
   let permutation = Permutation(Combinatorics.GeneratePermutation(X.ColumnCount, Random(seed)))
@@ -422,26 +429,23 @@ let private __trainNetworkFor1MiniBatch arch hp (J: double, ts: TrainingState, t
   let J = J + (double m) * (_computeCost hp.λ Y Ŷ ts.Parameters)
   J, ts, timer
 
-let private __trainNetworkFor1Epoch seed (timer: Stopwatch) (callback: EpochCallback) (arch: Architecture) (X: Matrix<double>) (Y: Matrix<double>) (hp: HyperParameters) (ts: TrainingState) epoch =
-  let m = X.ColumnCount
+let private __trainNetworkFor1Epoch_ seed (timer: Stopwatch) (callback: EpochCallback) (arch: Architecture) (X: Matrix<double>) (Y: Matrix<double>) (hp: HyperParameters) (ts: TrainingState) epoch =
   timer.Restart()
-  // NOTE: Should we move it out of there?
-  // TODO: Both deeplearning.ai and neuralnetworksanddeeplearning.com do it on every epoc. Ask on various forums what is the best practice if dataset is large?
-  let X = X.Clone()
-  let Y = Y.Clone()
-  shuffleDataSet_ (seed + epoch) (X, Y)
 
+  shuffleDataSet_ (seed + epoch) (X, Y)
   let J, ts, timer = 
     (X, Y)
     |> _getMiniBatches hp.BatchSize
     |> Seq.fold (__trainNetworkFor1MiniBatch arch hp) (0., ts, timer)
   timer.Stop()
+
+  let m = X.ColumnCount
   let J = J / double m
   let accuracy = computeAccuracy arch X Y ts.Parameters
   callback epoch timer.Elapsed J accuracy
   ts
 
-let trainNetwork seed p0 (callback: EpochCallback) (arch: Architecture) (hp: HyperParameters) (X: Matrix<double>) (Y: Matrix<double>): Parameters =
+let trainNetwork_ seed p0 (callback: EpochCallback) (arch: Architecture) (hp: HyperParameters) (X: Matrix<double>) (Y: Matrix<double>): Parameters =
   assert (X.ColumnCount = Y.ColumnCount)
 
   let timer = Stopwatch()
@@ -456,7 +460,7 @@ let trainNetwork seed p0 (callback: EpochCallback) (arch: Architecture) (hp: Hyp
 
   let ts =
     seq { for epoch in 0 .. (hp.Epochs - 1) do epoch }
-    |> Seq.fold (__trainNetworkFor1Epoch seed timer callback arch X Y hp) ts0
+    |> Seq.fold (__trainNetworkFor1Epoch_ seed timer callback arch X Y hp) ts0
 
   ts.Parameters
 

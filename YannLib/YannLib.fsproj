@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <Compile Include="YaFunTK.fs" />
+    <Compile Include="Constants.fs" />
     <Compile Include="Extensions.fs" />
     <Compile Include="Activations.fs" />
     <Compile Include="DNN.fs" />
@@ -16,6 +17,7 @@
     <PackageReference Include="MathNet.Numerics.Data.Matlab" Version="4.0.0" />
     <PackageReference Include="MathNet.Numerics.FSharp" Version="4.11.0" />
     <PackageReference Include="MathNet.Numerics.MKL.Win-x64" Version="2.4.0" />
+    <PackageReference Include="Microsoft.Data.Analysis" Version="0.4.0" />
   </ItemGroup>
 
   <ItemGroup>

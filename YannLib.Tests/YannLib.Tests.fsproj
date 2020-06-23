@@ -7,6 +7,7 @@
 
   <ItemGroup>
     <Compile Include="TestHelpers.fs" />
+    <Compile Include="ActivationsTests.fs" />
     <Compile Include="DNNTests.Core.fs" />
     <Compile Include="DNNTests.GradCheck.fs" />
     <Compile Include="DNNTests.Regularization.fs" />
@@ -31,6 +32,7 @@
     <PackageReference Include="FsUnit.xUnit" Version="3.8.1" />
     <PackageReference Include="MathNet.Numerics.FSharp" Version="4.11.0" />
     <PackageReference Include="MathNet.Numerics.MKL.Win-x64" Version="2.4.0" />
+    <PackageReference Include="Microsoft.Data.Analysis" Version="0.4.0" />
     <PackageReference Include="ScottPlot.WPF" Version="4.0.34" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.4.1">
       <PrivateAssets>all</PrivateAssets>
